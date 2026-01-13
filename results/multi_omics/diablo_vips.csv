@@ -1,0 +1,41 @@
+Feature,VIP,Block,Important
+GABA,1.405309145999618,amino_acids,True
+ASP,1.3755048919327952,amino_acids,True
+VAL,1.3176860560562618,amino_acids,True
+PHE,1.3145493403572324,amino_acids,True
+GLN,1.3082929818174058,amino_acids,True
+ILE,1.1508416701589763,amino_acids,True
+GLY,1.1454906526714708,amino_acids,True
+GLU,1.1196873676710402,amino_acids,True
+PRO,1.0816112113448644,amino_acids,True
+LEU,0.996945748034977,amino_acids,False
+33_LAC_0.0 : Conc. (nM),1.7470087548467532,central_carbon,True
+21_FUM_0.0 : Conc. (nM),1.5663841259936941,central_carbon,True
+19_F16DP_0.0 : Conc. (nM),1.5656783643271335,central_carbon,True
+48_SUCC_0.0 : Conc. (nM),1.5185744624636508,central_carbon,True
+13_ATP_0.0 : Conc. (nM),1.4759954550015997,central_carbon,True
+32_KGA_0.0 : Conc. (nM),1.1877499916864294,central_carbon,True
+DHAP_0.0 : Conc. (nM),1.1659470129342555,central_carbon,True
+11_AMP 0.0 : Conc. (nM),1.162661487181599,central_carbon,True
+54_UTP0.0 : Conc. (nM),1.1619151726329981,central_carbon,True
+15_CMP 0.0 : Conc. (nM),1.0998266998922657,central_carbon,True
+Ethyl stearate Area,3.602810959765683,aromatics,True
+(Z)-beta-Ocimene Area,3.2799336205948975,aromatics,True
+3-Octanone Area,2.666960996139378,aromatics,True
+Phenylacetaldehyde Area,2.4155502674462803,aromatics,True
+Benzaldehyde Area,2.4030159203193717,aromatics,True
+Propyl hexanoate Area,2.245342186191799,aromatics,True
+1-Hexen-3-one Area,1.974414172710621,aromatics,True
+1-Pentanol Area,1.9406527451160835,aromatics,True
+Ethyl butanoate Area,1.828652317842036,aromatics,True
+"(2E,6Z)-nona-2,6-dienal Area",1.7544736228214506,aromatics,True
+A0A804JU26,1.7600915452611536,proteomics,True
+A0A4S8IU21;A0A4S8IU21;A0A804L1U8;A0A804L1U9,1.7580832645645494,proteomics,True
+A0A804I3D2,1.757662992281036,proteomics,True
+A0A804K6R7,1.7392278286300729,proteomics,True
+A0A804I2W0,1.7323348885531882,proteomics,True
+A0A804JPU2,1.7234983560728527,proteomics,True
+A0A4S8IUA1;A0A4S8IUA1;A0A804JMG3,1.7146311673708463,proteomics,True
+A0A804I5D5,1.7096044438766012,proteomics,True
+A0A804JM83,1.7005467803415282,proteomics,True
+A0A804KY95,1.699539014049302,proteomics,True

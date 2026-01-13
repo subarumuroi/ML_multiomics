@@ -133,23 +133,25 @@ class VolatilesPreprocessor(BasePreprocessor):
         """
         df = df.copy()
         feature_cols = [c for c in df.columns if c != group_col]
+        numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
         
         # Group-wise median imputation (more conservative)
         def impute_group(group):
             group = group.copy()
-            for col in feature_cols:
-                if group[col].isna().any():
+            for col in numeric_cols:
+                if group[col].isna().any() and group[col].notna().sum() >= len(group) * 0.5:
                     # Only impute if at least 50% of group has values
-                    if group[col].notna().sum() >= len(group) * 0.5:
-                        median_val = group[col].median()
+                    median_val = group[col].median()
+                    if not pd.isna(median_val):
                         group[col] = group[col].fillna(median_val)
+
             return group
         
         df = df.groupby(group_col, group_keys=False).apply(impute_group)
         
         # Fill remaining with 0 (absent)
         fill_value = self.config.get('fill_value', 0)
-        df[feature_cols] = df[feature_cols].fillna(fill_value)
+        df[numeric_cols] = df[numeric_cols].fillna(fill_value)
         
         return df
 

@@ -55,7 +55,8 @@ class DIABLO:
         
     def fit(self, 
             blocks: Dict[str, np.ndarray],
-            y: np.ndarray):
+            y: np.ndarray,
+            feature_names: Optional[Dict[str, List[str]]] = None):
         """
         Fit DIABLO model.
         
@@ -66,6 +67,8 @@ class DIABLO:
             (n_samples × n_features) array
         y : np.ndarray
             Group labels (n_samples,)
+        feature_names : dict, optional
+            Dictionary of {block_name: feature_names} for each block
         """
         self.block_names = list(blocks.keys())
         n_blocks = len(self.block_names)
@@ -91,6 +94,9 @@ class DIABLO:
         # Store blocks
         self.blocks = blocks
         
+        # Store feature names
+        self.feature_names = feature_names if feature_names is not None else {}
+
         # Fit PLS for each block
         for block_name in self.block_names:
             X_block = blocks[block_name]
@@ -157,7 +163,7 @@ class DIABLO:
             vip_scores[i] = np.sqrt(n_features * np.sum(ss * weight_sq) / np.sum(ss))
         
         vip_df = pd.DataFrame({
-            'Feature': [f"Feature_{i}" for i in range(n_features)],
+            'Feature': self.feature_names.get(block_name, [f"Feature_{i}" for i in range(n_features)]),
             'VIP': vip_scores,
             'Block': block_name
         })

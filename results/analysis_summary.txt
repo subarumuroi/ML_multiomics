@@ -1,0 +1,66 @@
+================================================================================
+MULTI-OMICS ANALYSIS SUMMARY
+================================================================================
+
+SINGLE OMICS RESULTS
+--------------------------------------------------------------------------------
+
+AMINO_ACIDS
+  PCA: First 2 components explain 97.8% variance
+  PLS-DA (Leave-One-Out): 100.00% accuracy
+  Important features (VIP > 1): 9
+  Top feature: GABA (VIP = 1.41)
+
+CENTRAL_CARBON
+  PCA: First 2 components explain 93.6% variance
+  PLS-DA (Leave-One-Out): 100.00% accuracy
+  Important features (VIP > 1): 14
+  Top feature: 33_LAC_0.0 : Conc. (nM) (VIP = 1.75)
+
+AROMATICS
+  PCA: First 2 components explain 89.0% variance
+  PLS-DA (Leave-One-Out): 100.00% accuracy
+  Important features (VIP > 1): 28
+  Top feature: trans-2-Penten-1-ol Area (VIP = 1.41)
+
+PROTEOMICS
+  PCA: First 2 components explain 52.5% variance
+  PLS-DA (Leave-One-Out): 100.00% accuracy
+  Important features (VIP > 1): 2467
+  Top feature: A0A804JU26 (VIP = 1.76)
+
+
+MULTI-OMICS INTEGRATION RESULTS
+--------------------------------------------------------------------------------
+
+DIABLO Block Correlations:
+                amino_acids  central_carbon  aromatics  proteomics
+amino_acids        1.000000       -0.961395  -0.855170    0.969745
+central_carbon    -0.961395        1.000000   0.782790   -0.987003
+aromatics         -0.855170        0.782790   1.000000   -0.831795
+proteomics         0.969745       -0.987003  -0.831795    1.000000
+
+Concatenation Baseline (Leave-One-Out):
+  Accuracy: 100.00% ± 0.00%
+
+Top Features Across All Omics:
+
+  amino_acids:
+    - GABA (VIP = 1.41)
+    - ASP (VIP = 1.38)
+    - VAL (VIP = 1.32)
+
+  central_carbon:
+    - 33_LAC_0.0 : Conc. (nM) (VIP = 1.75)
+    - 21_FUM_0.0 : Conc. (nM) (VIP = 1.57)
+    - 19_F16DP_0.0 : Conc. (nM) (VIP = 1.57)
+
+  aromatics:
+    - Ethyl stearate Area (VIP = 3.60)
+    - (Z)-beta-Ocimene Area (VIP = 3.28)
+    - 3-Octanone Area (VIP = 2.67)
+
+  proteomics:
+    - A0A804JU26 (VIP = 1.76)
+    - A0A4S8IU21;A0A4S8IU21;A0A804L1U8;A0A804L1U9 (VIP = 1.76)
+    - A0A804I3D2 (VIP = 1.76)

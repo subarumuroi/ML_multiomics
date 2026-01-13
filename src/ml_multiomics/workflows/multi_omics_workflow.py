@@ -178,10 +178,13 @@ class MultiOmicsWorkflow:
         # Prepare blocks dictionary
         blocks = {name: multi_block.get_block(name) 
                  for name in multi_block.get_block_names()}
+
+        feature_names = {name: multi_block.blocks[name]['feature_names']
+                         for name in multi_block.get_block_names()}
         
         # Fit DIABLO
         diablo = DIABLO(n_components=n_components, design=design)
-        diablo.fit(blocks, multi_block.y)
+        diablo.fit(blocks, multi_block.y, feature_names=feature_names)
         
         # Get block correlations
         corr_df = diablo.calculate_block_correlations()
