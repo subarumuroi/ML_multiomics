@@ -212,9 +212,15 @@ class BasePreprocessor(ABC):
         
         # Step 3: Separate features and labels
         feature_cols = [c for c in df.columns if c != group_col]
-        X = df[feature_cols].values
-        y = df[group_col].values
-        self.feature_names = feature_cols
+
+        # keep only numeric cols (ignore 'sample name/ids' if present)
+        numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
+        X = df[numeric_cols].values.astype(float)
+        y = df[group_col].astype(str).values
+        self.feature_names = list(numeric_cols)
+
+        # there was a bug where sample name strings were causeing errors downstream
+        X = np.array(X, dtype=float)
         
         # Step 4: Apply transformation
         X = self.apply_transformation(X)

@@ -52,8 +52,16 @@ class PCAAnalysis:
         self.pca = PCA(n_components=self.n_components)
         self.scores = self.pca.fit_transform(X)
         self.loadings = self.pca.components_.T  # n_features × n_components
-        self.feature_names = feature_names or [f"Feature_{i}" for i in range(X.shape[1])]
+
+        # fix to ensure feature names are Python list
+        if feature_names is not None:
+            self.feature_names = list(feature_names)
+        else:
+            self.feature_names = [f"Feature_{i}" for i in range(X.shape[1])]
         
+        #create dedicated feature_list attribute for backward compatibility
+        self.feature_list = self.feature_names
+
         return self
     
     def get_variance_explained(self) -> pd.DataFrame:
@@ -292,7 +300,7 @@ class PCAAnalysis:
         scale = 0.7 * np.abs(self.scores[:, [pc_x_idx, pc_y_idx]]).max()
         
         for feature in top_features:
-            idx = self.feature_names.index(feature)
+            idx = self.feature_list.index(feature)
             x = self.loadings[idx, pc_x_idx] * scale
             y = self.loadings[idx, pc_y_idx] * scale
             

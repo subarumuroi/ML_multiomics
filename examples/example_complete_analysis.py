@@ -14,12 +14,12 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 # Import workflows
-from workflows.single_omics_workflow import SingleOmicsWorkflow
-from workflows.multi_omics_workflow import MultiOmicsWorkflow
+from ml_multiomics.workflows.single_omics_workflow import SingleOmicsWorkflow
+from ml_multiomics.workflows.multi_omics_workflow import MultiOmicsWorkflow
 
 # Import utilities
-from utils.validation import CrossValidator, PermutationTest, ModelComparator
-from utils.visualization import OmicsPlotter, save_publication_figure
+from ml_multiomics.utils.validation import CrossValidator, PermutationTest, ModelComparator
+from ml_multiomics.utils.visualization import OmicsPlotter, save_publication_figure
 
 
 def run_single_omics_analyses(data_paths: dict, output_dir: str = "results/single_omics"):

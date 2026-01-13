@@ -56,11 +56,12 @@ class MetabolomicsPreprocessor(BasePreprocessor):
         """
         df = df.copy()
         feature_cols = [c for c in df.columns if c != group_col]
+        numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
         
         # Group-wise median imputation
         def impute_group(group):
             group = group.copy()
-            for col in feature_cols:
+            for col in numeric_cols:
                 if group[col].isna().any():
                     median_val = group[col].median()
                     if not pd.isna(median_val):
@@ -71,7 +72,7 @@ class MetabolomicsPreprocessor(BasePreprocessor):
         
         # Fill remaining NaNs
         fill_value = self.config.get('fill_value', 0)
-        df[feature_cols] = df[feature_cols].fillna(fill_value)
+        df[numeric_cols] = df[numeric_cols].fillna(fill_value)
         
         return df
     
@@ -185,8 +186,9 @@ class ProteomicsPreprocessor(BasePreprocessor):
         """
         df = df.copy()
         feature_cols = [c for c in df.columns if c != group_col]
+        numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
         
-        n_missing = df[feature_cols].isna().sum().sum()
+        n_missing = df[numeric_cols].isna().sum().sum()
         
         if n_missing > 0:
             self._log(f"Warning: Found {n_missing} missing values in imputed proteomics data")
@@ -194,9 +196,9 @@ class ProteomicsPreprocessor(BasePreprocessor):
             # Simple median imputation as fallback
             fill_value = self.config.get('fill_value')
             if fill_value is not None:
-                df[feature_cols] = df[feature_cols].fillna(fill_value)
+                df[numeric_cols] = df[numeric_cols].fillna(fill_value)
             else:
                 # Use global median
-                df[feature_cols] = df[feature_cols].fillna(df[feature_cols].median())
+                df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
         
         return df

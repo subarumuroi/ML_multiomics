@@ -75,7 +75,11 @@ class PLSDAAnalysis:
         # Store results
         self.scores = self.pls.x_scores_  # Scores (T)
         self.loadings = self.pls.x_loadings_  # Loadings (P)
-        self.feature_names = feature_names or [f"Feature_{i}" for i in range(X.shape[1])]
+        # same fix as for pca
+        if feature_names is not None:
+            self.feature_names = list(feature_names)
+        else:
+            self.feature_names = [f"Feature_{i}" for i in range(X.shape[1])]
         
         return self
     
