@@ -24,8 +24,9 @@ setup(
     author='Your Name',
     author_email='your.email@example.com',
     
-    # Package discovery
-    packages=find_packages(),
+    # Package discovery - look in src directory
+    package_dir={'': 'src'},
+    packages=find_packages(where='src'),
     
     # Python version requirement
     python_requires='>=3.8',

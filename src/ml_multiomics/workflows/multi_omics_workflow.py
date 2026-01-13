@@ -12,12 +12,10 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Import preprocessing
-from preprocessing.metabolomics_preprocessor import MetabolomicsPreprocessor, VolatilesPreprocessor, ProteomicsPreprocessor
-from preprocessing.integrator import OmicsIntegrator, MultiBlockData
+from ml_multiomics.preprocessing import MetabolomicsPreprocessor, VolatilesPreprocessor, ProteomicsPreprocessor, OmicsIntegrator, MultiBlockData
 
 # Import integration methods
-from methods.multi_omics.diablo import DIABLO
-from methods.multi_omics.concatenation_baseline import ConcatenationBaseline, WeightedConcatenation
+from ml_multiomics.methods.multi_omics import DIABLO, ConcatenationBaseline, WeightedConcatenation
 
 
 class MultiOmicsWorkflow:

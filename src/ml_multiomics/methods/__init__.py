@@ -1,5 +1,5 @@
 # ============================================================================
-# ml_multiomics/methods/__init__.py
+# src/ml_multiomics/methods/__init__.py
 # ============================================================================
 """Analysis methods for single and multi-omics."""
 

@@ -1,7 +1,7 @@
 """
-Preprocessor for metabolomics data (amino acids, central carbon metabolism).
+Omics-specific preprocessors for metabolomics, volatiles, and proteomics data.
 
-Handles concentration data with appropriate imputation and transformation.
+Each preprocessor handles the unique characteristics of its omics type.
 """
 
 import numpy as np

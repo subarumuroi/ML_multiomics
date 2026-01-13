@@ -12,11 +12,10 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Import preprocessing
-from preprocessing.metabolomics_preprocessor import MetabolomicsPreprocessor, VolatilesPreprocessor, ProteomicsPreprocessor
+from ml_multiomics.preprocessing import MetabolomicsPreprocessor, VolatilesPreprocessor, ProteomicsPreprocessor
 
 # Import analysis methods
-from methods.single_omics.pca import PCAAnalysis
-from methods.single_omics.plsda import PLSDAAnalysis
+from ml_multiomics.methods.single_omics import PCAAnalysis, PLSDAAnalysis
 
 
 class SingleOmicsWorkflow:

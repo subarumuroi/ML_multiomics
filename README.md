@@ -24,49 +24,62 @@ A comprehensive Python framework for analyzing and integrating multi-omics datas
 
 ```bash
 # Create conda environment (recommended)
-conda create -n multi_omics python=3.9
-conda activate multi_omics
+conda create -n ml_multiomics python=3.9
+conda activate ml_multiomics
 
-# Install dependencies
-pip install numpy pandas matplotlib seaborn scikit-learn scipy
+# Clone the repository
+git clone https://github.com/yourusername/ml_multiomics.git
+cd ml_multiomics
+
+# Install in development mode
+pip install -e .
+
+# Or install with development dependencies
+pip install -e .[dev]
 ```
 
 ## Package Structure
 
 ```
 ml_multiomics/
-├── preprocessing/
-│   ├── base_preprocessor.py           # Abstract base class
-│   ├── metabolomics_preprocessor.py   # Metabolomics, volatiles, proteomics
-│   ├── integrator.py                  # Multi-omics data integration
-│   └── __init__.py
-│
-├── methods/
-│   ├── single_omics/
-│   │   ├── pca.py                     # PCA analysis
-│   │   ├── plsda.py                   # PLS-DA classification
-│   │   └── __init__.py
-│   │
-│   └── multi_omics/
-│       ├── diablo.py                  # DIABLO integration
-│       ├── concatenation_baseline.py  # Simple baseline methods
+├── src/
+│   └── ml_multiomics/
+│       ├── preprocessing/
+│       │   ├── base_preprocessor.py
+│       │   ├── omics_preprocessor.py
+│       │   ├── integrator.py
+│       │   └── __init__.py
+│       │
+│       ├── methods/
+│       │   ├── single_omics/
+│       │   │   ├── pca.py
+│       │   │   ├── plsda.py
+│       │   │   └── __init__.py
+│       │   │
+│       │   └── multi_omics/
+│       │       ├── diablo.py
+│       │       ├── concatenation_baseline.py
+│       │       └── __init__.py
+│       │
+│       ├── workflows/
+│       │   ├── single_omics_workflow.py
+│       │   ├── multi_omics_workflow.py
+│       │   └── __init__.py
+│       │
+│       ├── utils/
+│       │   ├── validation.py
+│       │   ├── visualization.py
+│       │   └── __init__.py
+│       │
 │       └── __init__.py
 │
-├── workflows/
-│   ├── single_omics_workflow.py       # Single omics pipeline
-│   ├── multi_omics_workflow.py        # Integration pipeline
-│   └── __init__.py
-│
-├── utils/
-│   ├── validation.py                  # Cross-validation & testing
-│   ├── visualization.py               # Plotting utilities
-│   └── __init__.py
-│
 ├── examples/
-│   └── example_complete_analysis.py   # Full analysis example
+│   └── example_complete_analysis.py
 │
-├── README.md
-└── requirements.txt
+├── tests/
+│
+├── setup.py
+└── README.md
 ```
 
 ## Data Files
@@ -82,7 +95,7 @@ The framework expects the following data files:
 ### Single Omics Analysis
 
 ```python
-from workflows.single_omics_workflow import SingleOmicsWorkflow
+from ml_multiomics.workflows import SingleOmicsWorkflow
 import pandas as pd
 
 # Load your data
@@ -107,7 +120,7 @@ workflow.display_results()
 ### Multi-Omics Integration
 
 ```python
-from workflows.multi_omics_workflow import MultiOmicsWorkflow
+from ml_multiomics.workflows import MultiOmicsWorkflow
 import pandas as pd
 
 # Load all omics layers
@@ -231,7 +244,7 @@ results/multi_omics/
 ### Custom Validation
 
 ```python
-from utils.validation import CrossValidator, PermutationTest
+from ml_multiomics.utils import CrossValidator, PermutationTest
 
 # Leave-One-Out validation
 validator = CrossValidator(strategy='loo')
@@ -246,7 +259,7 @@ print(f"P-value: {test_results['p_value']:.4f}")
 ### Custom Visualizations
 
 ```python
-from utils.visualization import OmicsPlotter
+from ml_multiomics.utils import OmicsPlotter
 
 plotter = OmicsPlotter()
 

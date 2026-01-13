@@ -1,5 +1,5 @@
 # ============================================================================
-# ml_multiomics/utils/__init__.py
+# src/ml_multiomics/utils/__init__.py
 # ============================================================================
 """Utility functions for validation and visualization."""
 

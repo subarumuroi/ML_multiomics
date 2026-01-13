@@ -1,5 +1,5 @@
 # ============================================================================
-# ml_multiomics/methods/multi_omics/__init__.py
+# src/ml_multiomics/methods/multi_omics/__init__.py
 # ============================================================================
 """Multi-omics integration methods."""
 
