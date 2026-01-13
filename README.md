@@ -28,7 +28,7 @@ conda create -n ml_multiomics python=3.9
 conda activate ml_multiomics
 
 # Clone the repository
-git clone https://github.com/yourusername/ml_multiomics.git
+git clone https://github.com/subarumuroi/ml_multiomics.git
 cd ml_multiomics
 
 # Install in development mode
@@ -283,7 +283,7 @@ fig, ax = plotter.plot_volcano(
 If you use this framework in your research, please cite:
 
 ```
-[Your paper citation here]
+[TBA]
 ```
 
 ## Contributing
@@ -296,7 +296,7 @@ Apache License 2.0 - see LICENSE file for details.
 
 ## Contact
 
-For questions or issues, please contact [your contact information].
+For questions or issues, please contact [k.muroi@uq.edu.au].
 
 ## Acknowledgments
 

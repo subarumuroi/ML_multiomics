@@ -21,8 +21,8 @@ setup(
     description='Multi-omics machine learning framework for integrative analysis',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    author='Your Name',
-    author_email='your.email@example.com',
+    author='Subaru Muroi',
+    author_email='k.muroi@uq.edu.au',
     
     # Package discovery - look in src directory
     package_dir={'': 'src'},
@@ -70,7 +70,7 @@ setup(
     
     # Project URLs
     project_urls={
-        'Bug Reports': 'https://github.com/yourusername/ml_multiomics/issues',
-        'Source': 'https://github.com/yourusername/ml_multiomics',
+        'Bug Reports': 'https://github.com/subarumuroi/ml_multiomics/issues',
+        'Source': 'https://github.com/subarumuroi/ml_multiomics',
     },
 )
