@@ -73,61 +73,109 @@ print(design)
 
 cat("\n=== Tuning DIABLO Parameters ===\n")
 
-# Test different numbers of features to keep per block
-# Adjust based on your data size
-test_keepX <- list()
-for (block_name in names(X)) {
-  n_features <- ncol(X[[block_name]])
+# For small sample sizes (n < 15), skip expensive tuning
+# Use reasonable defaults based on data size
+n_samples <- nrow(X[[1]])
+
+if (n_samples < 15) {
+  cat("\nSmall sample size (n =", n_samples, "), using conservative defaults\n")
   
-  if (n_features < 20) {
-    test_keepX[[block_name]] <- c(5, 10, n_features)
-  } else if (n_features < 100) {
-    test_keepX[[block_name]] <- c(5, 10, 20, 30)
-  } else {
-    test_keepX[[block_name]] <- c(10, 20, 50, 100)
+  optimal_ncomp <- 2
+  optimal_keepX <- list()
+  
+  for (block_name in names(X)) {
+    n_features <- ncol(X[[block_name]])
+    
+    if (n_features < 10) {
+      optimal_keepX[[block_name]] <- rep(n_features, optimal_ncomp)
+    } else if (n_features < 50) {
+      optimal_keepX[[block_name]] <- rep(min(10, n_features), optimal_ncomp)
+    } else {
+      optimal_keepX[[block_name]] <- rep(min(20, n_features), optimal_ncomp)
+    }
+    
+    cat("Block", block_name, "- keepX:", optimal_keepX[[block_name]][1], "per component\n")
   }
   
-  cat("Block", block_name, "- testing keepX:", test_keepX[[block_name]], "\n")
+} else {
+  # Run tuning for larger datasets
+  cat("\nRunning parameter tuning...\n")
+  
+  # Test different numbers of features to keep per block
+  test_keepX <- list()
+  for (block_name in names(X)) {
+    n_features <- ncol(X[[block_name]])
+    
+    if (n_features < 20) {
+      test_keepX[[block_name]] <- c(5, 10, n_features)
+    } else if (n_features < 100) {
+      test_keepX[[block_name]] <- c(5, 10, 20, 30)
+    } else {
+      test_keepX[[block_name]] <- c(10, 20, 50, 100)
+    }
+    
+    cat("Block", block_name, "- testing keepX:", test_keepX[[block_name]], "\n")
+  }
+  
+  # Tune with leave-one-out CV
+  tune_result <- tryCatch({
+    tune.block.splsda(
+      X = X,
+      Y = Y,
+      ncomp = 3,
+      test.keepX = test_keepX,
+      design = design,
+      validation = 'loo',
+      dist = 'centroids.dist',
+      progressBar = FALSE
+    )
+  }, error = function(e) {
+    cat("Tuning failed:", e$message, "\n")
+    NULL
+  })
+  
+  # Extract optimal parameters
+  if (!is.null(tune_result)) {
+    # Get ncomp safely
+    ncomp_choice <- tune_result$choice.ncomp$ncomp
+    
+    if (is.null(ncomp_choice) || any(is.na(ncomp_choice))) {
+      optimal_ncomp <- 2
+      cat("Could not extract optimal ncomp, using default: 2\n")
+    } else if (length(ncomp_choice) > 1) {
+      optimal_ncomp <- as.integer(max(ncomp_choice, na.rm = TRUE))
+      cat("Multiple ncomp values, using max:", optimal_ncomp, "\n")
+    } else {
+      optimal_ncomp <- as.integer(ncomp_choice)
+    }
+    
+    optimal_keepX <- tune_result$choice.keepX
+    
+    cat("\nOptimal number of components:", optimal_ncomp, "\n")
+    cat("Optimal features per block:\n")
+    print(optimal_keepX)
+    
+  } else {
+    # Fallback defaults
+    optimal_ncomp <- 2
+    optimal_keepX <- lapply(X, function(block) {
+      rep(min(15, ncol(block)), 2)
+    })
+    cat("\nUsing default parameters\n")
+  }
 }
 
-# Tune with leave-one-out CV (appropriate for small n)
-cat("\nRunning leave-one-out cross-validation...\n")
-
-tune_result <- tryCatch({
-  tune.block.splsda(
-    X = X,
-    Y = Y,
-    ncomp = 3,  # Test up to 3 components
-    test.keepX = test_keepX,
-    design = design,
-    validation = 'loo',
-    dist = 'centroids.dist',
-    progressBar = FALSE
-  )
-}, error = function(e) {
-  cat("Tuning failed, using defaults\n")
-  cat("Error:", e$message, "\n")
-  NULL
-})
-
-# Extract optimal parameters
-if (!is.null(tune_result)) {
-  optimal_ncomp <- tune_result$choice.ncomp$ncomp
-  optimal_keepX <- tune_result$choice.keepX
-  
-  cat("\nOptimal number of components:", optimal_ncomp, "\n")
-  cat("Optimal features per block:\n")
-  print(optimal_keepX)
-} else {
-  # Fallback to reasonable defaults
+# Final safety check
+if (is.null(optimal_ncomp) || is.na(optimal_ncomp) || optimal_ncomp < 1) {
   optimal_ncomp <- 2
-  optimal_keepX <- lapply(X, function(block) {
-    min(15, ncol(block))
-  })
-  cat("\nUsing default parameters (tuning failed)\n")
-  cat("Components:", optimal_ncomp, "\n")
-  cat("Features per block:\n")
-  print(optimal_keepX)
+  cat("Warning: Invalid ncomp, forcing to 2\n")
+}
+
+cat("\nFinal parameters:\n")
+cat("  ncomp:", optimal_ncomp, "\n")
+cat("  keepX per block:\n")
+for (bn in names(optimal_keepX)) {
+  cat("    ", bn, ":", optimal_keepX[[bn]][1], "\n")
 }
 
 # ============================================================================
@@ -212,14 +260,29 @@ for (block_name in names(loadings)) {
 }
 
 # Save performance metrics
-perf_df <- data.frame(
-  component = paste0("comp", 1:optimal_ncomp),
-  overall_error = perf_result$error.rate$overall[, "centroids.dist", 1:optimal_ncomp],
-  balanced_error = perf_result$error.rate.class$centroids.dist[, 1:optimal_ncomp]
-)
-write.csv(perf_df, 
-         file.path(output_dir, "performance_metrics.csv"),
-         row.names = FALSE)
+tryCatch({
+  # Extract error rates more carefully
+  error_overall <- perf_result$error.rate$overall
+  
+  # Check if we have the expected structure
+  if (!is.null(error_overall) && is.array(error_overall)) {
+    # Create performance dataframe
+    n_comp <- dim(error_overall)[3]
+    
+    perf_data <- data.frame(
+      component = paste0("comp", 1:n_comp),
+      overall_error = error_overall["Overall.ER", "centroids.dist", 1:n_comp]
+    )
+    
+    write.csv(perf_data, 
+             file.path(output_dir, "performance_metrics.csv"),
+             row.names = FALSE)
+  } else {
+    cat("Warning: Could not extract performance metrics in expected format\n")
+  }
+}, error = function(e) {
+  cat("Warning: Could not save performance metrics:", e$message, "\n")
+})
 
 # Save model summary as JSON
 model_summary <- list(
