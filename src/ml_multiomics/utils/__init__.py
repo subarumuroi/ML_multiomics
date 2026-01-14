@@ -11,6 +11,7 @@ from .validation import (
     ModelComparator
 )
 from .visualization import OmicsPlotter, save_publication_figure
+from .r_interface import run_diablo_r
 
 __all__ = [
     'CrossValidator',
@@ -19,5 +20,6 @@ __all__ = [
     'FeatureStabilityValidator',
     'ModelComparator',
     'OmicsPlotter',
-    'save_publication_figure'
+    'save_publication_figure',
+    'run_diablo_r'
 ]

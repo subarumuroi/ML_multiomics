@@ -19,23 +19,23 @@ DHAP_0.0 : Conc. (nM),1.1659470129342555,central_carbon,True
 11_AMP 0.0 : Conc. (nM),1.162661487181599,central_carbon,True
 54_UTP0.0 : Conc. (nM),1.1619151726329981,central_carbon,True
 15_CMP 0.0 : Conc. (nM),1.0998266998922657,central_carbon,True
-Ethyl stearate Area,3.602810959765683,aromatics,True
-(Z)-beta-Ocimene Area,3.2799336205948975,aromatics,True
-3-Octanone Area,2.666960996139378,aromatics,True
-Phenylacetaldehyde Area,2.4155502674462803,aromatics,True
-Benzaldehyde Area,2.4030159203193717,aromatics,True
-Propyl hexanoate Area,2.245342186191799,aromatics,True
-1-Hexen-3-one Area,1.974414172710621,aromatics,True
-1-Pentanol Area,1.9406527451160835,aromatics,True
-Ethyl butanoate Area,1.828652317842036,aromatics,True
-"(2E,6Z)-nona-2,6-dienal Area",1.7544736228214506,aromatics,True
-A0A804JU26,1.7600915452611536,proteomics,True
-A0A4S8IU21;A0A4S8IU21;A0A804L1U8;A0A804L1U9,1.7580832645645494,proteomics,True
-A0A804I3D2,1.757662992281036,proteomics,True
-A0A804K6R7,1.7392278286300729,proteomics,True
-A0A804I2W0,1.7323348885531882,proteomics,True
-A0A804JPU2,1.7234983560728527,proteomics,True
-A0A4S8IUA1;A0A4S8IUA1;A0A804JMG3,1.7146311673708463,proteomics,True
-A0A804I5D5,1.7096044438766012,proteomics,True
-A0A804JM83,1.7005467803415282,proteomics,True
-A0A804KY95,1.699539014049302,proteomics,True
+3-Methyl-2-buten-1-ol Area,3.763100814738853,aromatics,True
+(Z)-beta-Ocimene Area,2.1277188814333052,aromatics,True
+Ethyl stearate Area,2.0913035278323635,aromatics,True
+3-Octanone Area,1.9799267591799998,aromatics,True
+Propyl hexanoate Area,1.7546098909028525,aromatics,True
+Benzaldehyde Area,1.460866737652068,aromatics,True
+Phenylacetaldehyde Area,1.4146345675902867,aromatics,True
+Methyl isovalerate Area,1.4028733712278578,aromatics,True
+3-Hexanone Area,1.3724389854334913,aromatics,True
+"(E,E)-2,4-nonadienal Area",1.3492623764762146,aromatics,True
+A0A804J0F0,3.6235837920174014,proteomics,True
+A0A804JSQ2,3.560405775879381,proteomics,True
+A0A4S8ID85;A0A4S8ID85,3.424717619429854,proteomics,True
+A0A4S8ITV2;A0A4S8ITV2,3.1659410199580056,proteomics,True
+A0A4S8KI46;A0A4S8KI46;A0A804IZ24,3.164281207582165,proteomics,True
+A0A4S8K9R5;A0A4S8K9R5;A0A804IL80,3.0794697725887064,proteomics,True
+A0A804L344,2.869740898839811,proteomics,True
+A0A4S8J2V0;A0A4S8J2V0;A0A804L664,2.7484106233297942,proteomics,True
+A0A4V4H2Z4;A0A4V4H2Z4,2.6830786714956414,proteomics,True
+A0A804J494,2.672074537623205,proteomics,True

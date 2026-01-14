@@ -18,16 +18,16 @@ CENTRAL_CARBON
   Top feature: 33_LAC_0.0 : Conc. (nM) (VIP = 1.75)
 
 AROMATICS
-  PCA: First 2 components explain 89.0% variance
+  PCA: First 2 components explain 96.9% variance
   PLS-DA (Leave-One-Out): 100.00% accuracy
-  Important features (VIP > 1): 28
-  Top feature: trans-2-Penten-1-ol Area (VIP = 1.41)
+  Important features (VIP > 1): 27
+  Top feature: 2-Ethylfuran Area (VIP = 2.69)
 
 PROTEOMICS
-  PCA: First 2 components explain 52.5% variance
+  PCA: First 2 components explain 59.9% variance
   PLS-DA (Leave-One-Out): 100.00% accuracy
-  Important features (VIP > 1): 2467
-  Top feature: A0A804JU26 (VIP = 1.76)
+  Important features (VIP > 1): 1788
+  Top feature: A0A804J0F0 (VIP = 3.62)
 
 
 MULTI-OMICS INTEGRATION RESULTS
@@ -35,10 +35,10 @@ MULTI-OMICS INTEGRATION RESULTS
 
 DIABLO Block Correlations:
                 amino_acids  central_carbon  aromatics  proteomics
-amino_acids        1.000000       -0.961395  -0.855170    0.969745
-central_carbon    -0.961395        1.000000   0.782790   -0.987003
-aromatics         -0.855170        0.782790   1.000000   -0.831795
-proteomics         0.969745       -0.987003  -0.831795    1.000000
+amino_acids        1.000000       -0.961395   0.560169    0.968478
+central_carbon    -0.961395        1.000000  -0.490983   -0.980180
+aromatics          0.560169       -0.490983   1.000000    0.572431
+proteomics         0.968478       -0.980180   0.572431    1.000000
 
 Concatenation Baseline (Leave-One-Out):
   Accuracy: 100.00% ± 0.00%
@@ -56,11 +56,11 @@ Top Features Across All Omics:
     - 19_F16DP_0.0 : Conc. (nM) (VIP = 1.57)
 
   aromatics:
-    - Ethyl stearate Area (VIP = 3.60)
-    - (Z)-beta-Ocimene Area (VIP = 3.28)
-    - 3-Octanone Area (VIP = 2.67)
+    - 3-Methyl-2-buten-1-ol Area (VIP = 3.76)
+    - (Z)-beta-Ocimene Area (VIP = 2.13)
+    - Ethyl stearate Area (VIP = 2.09)
 
   proteomics:
-    - A0A804JU26 (VIP = 1.76)
-    - A0A4S8IU21;A0A4S8IU21;A0A804L1U8;A0A804L1U9 (VIP = 1.76)
-    - A0A804I3D2 (VIP = 1.76)
+    - A0A804J0F0 (VIP = 3.62)
+    - A0A804JSQ2 (VIP = 3.56)
+    - A0A4S8ID85;A0A4S8ID85 (VIP = 3.42)

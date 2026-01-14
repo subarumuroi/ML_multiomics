@@ -120,7 +120,7 @@ class VolatilesPreprocessor(BasePreprocessor):
             'drop_threshold': 0.6,       # More lenient for sparse volatile data
             'fill_value': 0,              # Undetected = absent
             'transform': 'log',           # Log transform helps with skewness
-            'scaling': 'standard',        # Standard scaling for area counts
+            'scaling': 'pareto',        # changed from standard to pareto for DIABLO consistency
             'handle_negatives': False,    # Area counts shouldn't be negative
         }
     
@@ -175,7 +175,7 @@ class ProteomicsPreprocessor(BasePreprocessor):
             'drop_threshold': 0.3,        # Stricter for proteomics
             'fill_value': None,            # Don't fill - data is pre-imputed
             'transform': 'log2',           # Log2 is standard for proteomics
-            'scaling': 'standard',         # Z-score normalization
+            'scaling': 'pareto',         # changed from standard to pareto for DIABLO consistency
             'handle_negatives': False,     # Shouldn't have negatives
         }
     
@@ -184,7 +184,7 @@ class ProteomicsPreprocessor(BasePreprocessor):
         Handle missing values in proteomics data.
         
         For imputed proteomics data, we assume missing values are minimal.
-        If using unimputed data, would need more sophisticated methods.
+        Uses group-wise median imputation like other omics types.
         """
         df = df.copy()
         feature_cols = [c for c in df.columns if c != group_col]
@@ -195,12 +195,25 @@ class ProteomicsPreprocessor(BasePreprocessor):
         if n_missing > 0:
             self._log(f"Warning: Found {n_missing} missing values in imputed proteomics data")
             
-            # Simple median imputation as fallback
+            # Group-wise median imputation (same as other omics)
+            def impute_group(group):
+                group = group.copy()
+                for col in numeric_cols:
+                    if group[col].isna().any():
+                        median_val = group[col].median()
+                        if not pd.isna(median_val):
+                            group[col] = group[col].fillna(median_val)
+                return group
+            
+            df = df.groupby(group_col, group_keys=False).apply(impute_group)
+            
+            # Fill any remaining NaNs (fallback)
             fill_value = self.config.get('fill_value')
             if fill_value is not None:
                 df[numeric_cols] = df[numeric_cols].fillna(fill_value)
             else:
-                # Use global median
-                df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
+                # Use global median for any remaining NaNs
+                global_median = df[numeric_cols].median()
+                df[numeric_cols] = df[numeric_cols].fillna(global_median)
         
         return df

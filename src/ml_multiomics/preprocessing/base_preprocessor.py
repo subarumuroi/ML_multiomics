@@ -167,10 +167,18 @@ class BasePreprocessor(ABC):
             if fit:
                 self.mean_ = np.mean(X, axis=0)
                 self.std_ = np.std(X, axis=0)
-                X_scaled = (X - self.mean_) / np.sqrt(self.std_)
+
+                # Protect against zero variance
+                std_safe = np.where(self.std_ == 0, 1, self.std_)
+                n_zero_var = (self.std_ == 0).sum()
+                if n_zero_var > 0:
+                    self._log(f"Warning: {n_zero_var} zero-variance features will not be scaled")
+
+                X_scaled = (X - self.mean_) / np.sqrt(std_safe)
                 self._log("Applied Pareto scaling")
             else:
-                X_scaled = (X - self.mean_) / np.sqrt(self.std_)
+                std_safe = np.where(self.std_ == 0, 1, self.std_)
+                X_scaled = (X - self.mean_) / np.sqrt(std_safe)
         
         else:
             X_scaled = X
@@ -227,6 +235,9 @@ class BasePreprocessor(ABC):
         
         # Step 5: Apply scaling
         X = self.apply_scaling(X, fit=True)
+
+        # Step 6: Final quality check
+        X = self._check_data_quality(X)
         
         self._log(f"Preprocessing complete. Final shape: {X.shape}")
         
@@ -243,3 +254,30 @@ class BasePreprocessor(ABC):
     def print_log(self):
         """Print preprocessing log."""
         print("\n".join(self.preprocessing_log))
+
+    def _check_data_quality(self, X: np.ndarray) -> np.ndarray:
+        """
+        Final quality check and cleanup.
+        
+        Checks for and handles:
+        - NaN values
+        - Inf values
+        - Ensures all values are finite
+        """
+        # Check for issues
+        has_nan = np.isnan(X).any()
+        has_inf = np.isinf(X).any()
+        
+        if has_nan or has_inf:
+            n_nan = np.isnan(X).sum()
+            n_inf = np.isinf(X).sum()
+            
+            if n_nan > 0:
+                self._log(f"Warning: Found {n_nan} NaN values after preprocessing, replacing with 0")
+                X = np.nan_to_num(X, nan=0.0)
+            
+            if n_inf > 0:
+                self._log(f"Warning: Found {n_inf} Inf values after preprocessing, replacing with max finite")
+                X = np.nan_to_num(X, posinf=np.finfo(np.float64).max, neginf=np.finfo(np.float64).min)
+        
+        return X
