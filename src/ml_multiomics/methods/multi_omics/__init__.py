@@ -14,5 +14,5 @@ __all__ = [
     'DIABLO',
     'ConcatenationBaseline',
     'WeightedConcatenation',
-    'EarlyIntegration'
+    'EarlyIntegration',
 ]

@@ -225,7 +225,7 @@ class MultiOmicsWorkflow:
             self.results['fig_diablo_circos'] = fig_circos
         
         return diablo
-    
+
     def run_concatenation_baseline(self,
                                    multi_block: Optional[MultiBlockData] = None,
                                    classifier: str = 'random_forest',
@@ -327,7 +327,34 @@ class MultiOmicsWorkflow:
             return comparison_df
         
         return None
-    
+
+    def generate_statistical_report(self):
+        """Generate report on statistical power and limitations."""
+        # Get number of samples
+        n_samples = len(self.integrator.common_samples)
+        
+        # Count total features from preprocessed data
+        total_features = 0
+        for layer_name, layer_data in self.preprocessed_data.items():
+            total_features += len(layer_data['feature_names'])
+        
+        # Get number of classes
+        first_layer = list(self.preprocessed_data.values())[0]
+        n_classes = len(np.unique(first_layer['y']))
+        
+        feature_to_sample_ratio = total_features / n_samples
+        
+        print("\n" + "="*60)
+        print("STATISTICAL LIMITATIONS REPORT")
+        print("="*60)
+        print(f"Sample Size: {n_samples}")
+        print(f"Total Features: {total_features}")
+        print(f"Feature:Sample Ratio: {feature_to_sample_ratio:.0f}:1")
+        print(f"\n⚠️  HIGH OVERFITTING RISK")
+        print("   Results are hypothesis-generating only")
+        print("   Permutation tests critical for validation")
+        print("="*60)
+
     def run_full_integration(self,
                            data_dict: Dict[str, pd.DataFrame],
                            omics_types: Dict[str, str],
@@ -367,14 +394,18 @@ class MultiOmicsWorkflow:
         
         # Step 2: Prepare integration
         multi_block = self.prepare_integration()
+        self.generate_statistical_report()
         
         # Step 3: Run DIABLO
         self.run_diablo(multi_block, n_components=n_components, plot=True)
         
-        # Step 4: Run concatenation baseline
+        # Step 4: Run MOFA+
+        #self.run_mofa_integration(n_factors=10)
+
+        # Step 5: Run concatenation baseline
         self.run_concatenation_baseline(multi_block, cv=True)
-        
-        # Step 5: Compare methods
+    
+        # Step 6: Compare methods
         self.compare_methods()
         
         print(f"\n{'='*60}")
@@ -402,6 +433,23 @@ class MultiOmicsWorkflow:
                 self.results[key].to_csv(
                     f"{output_dir}/{key}.csv", index=False)
         
+        # Save MOFA results 
+        if hasattr(self, 'mofa_model'):
+            mofa_dir = f"{output_dir}/mofa"
+            os.makedirs(mofa_dir, exist_ok=True)
+            self.mofa_model.save_results(mofa_dir)
+            
+            # Save MOFA plots
+            fig_var = self.mofa_model.plot_variance_explained()
+            fig_var.savefig(f"{mofa_dir}/variance_explained.png", 
+                        dpi=300, bbox_inches='tight')
+            plt.close(fig_var)
+            
+            fig_scores = self.mofa_model.plot_factor_scores(1, 2)
+            fig_scores.savefig(f"{mofa_dir}/factor_scores.png", 
+                            dpi=300, bbox_inches='tight')
+            plt.close(fig_scores)
+
         # Save figures
         for key, value in self.results.items():
             if key.startswith('fig_'):

@@ -67,18 +67,17 @@ diag(design) <- 0
 cat("Design matrix (off-diagonal = 0.1 for exploratory analysis):\n")
 print(design)
 
+
 # ============================================================================
-# TUNING: FIND OPTIMAL PARAMETERS
+# TUNING: FIND OPTIMAL PARAMETERS (MODIFIED for the extra small n=9 sampleset)
 # ============================================================================
 
 cat("\n=== Tuning DIABLO Parameters ===\n")
 
-# For small sample sizes (n < 15), skip expensive tuning
-# Use reasonable defaults based on data size
 n_samples <- nrow(X[[1]])
 
 if (n_samples < 15) {
-  cat("\nSmall sample size (n =", n_samples, "), using conservative defaults\n")
+  cat("\nSmall sample size (n =", n_samples, "), using VERY conservative defaults\n")
   
   optimal_ncomp <- 2
   optimal_keepX <- list()
@@ -86,18 +85,29 @@ if (n_samples < 15) {
   for (block_name in names(X)) {
     n_features <- ncol(X[[block_name]])
     
+    # CRITICAL FIX: Much smaller feature counts for n=9
     if (n_features < 10) {
+      # Keep all if very few features
       optimal_keepX[[block_name]] <- rep(n_features, optimal_ncomp)
     } else if (n_features < 50) {
-      optimal_keepX[[block_name]] <- rep(min(10, n_features), optimal_ncomp)
+      # 3-5 features for metabolomics-sized blocks
+      optimal_keepX[[block_name]] <- rep(min(3, n_features), optimal_ncomp)
+    } else if (n_features < 200) {
+      # 5-10 for larger blocks like volatiles
+      optimal_keepX[[block_name]] <- rep(min(5, n_features), optimal_ncomp)
     } else {
-      optimal_keepX[[block_name]] <- rep(min(20, n_features), optimal_ncomp)
+      # 10-15 for huge blocks like proteomics
+      # Rule of thumb: ~1-2 features per sample MAX
+      max_features <- max(10, floor(n_samples * 1.5))
+      optimal_keepX[[block_name]] <- rep(min(max_features, n_features), optimal_ncomp)
     }
     
-    cat("Block", block_name, "- keepX:", optimal_keepX[[block_name]][1], "per component\n")
+    cat("Block", block_name, ":", n_features, "features -> keepX =", 
+        optimal_keepX[[block_name]][1], "per component\n")
   }
   
 } else {
+
   # Run tuning for larger datasets
   cat("\nRunning parameter tuning...\n")
   
@@ -189,7 +199,8 @@ final_model <- block.splsda(
   Y = Y,
   ncomp = optimal_ncomp,
   keepX = optimal_keepX,
-  design = design
+  design = design,
+  scale = FALSE
 )
 
 cat("Model trained successfully\n")
@@ -208,6 +219,115 @@ perf_result <- perf(
 
 cat("\nOverall error rate (LOO):\n")
 print(perf_result$error.rate$overall)
+
+# ============================================================================
+# PERMUTATION TESTING
+# ============================================================================
+
+cat("\n=== Running Permutation Test ===\n")
+
+n_perm <- 50  # 50 permutations for small n
+perm_errors <- numeric(n_perm)
+perm_success <- 0
+
+for (i in 1:n_perm) {
+  set.seed(i)
+  Y_perm <- sample(Y)
+  
+  # Fit model with permuted labels
+  perm_model <- tryCatch({
+    block.splsda(
+      X = X,
+      Y = Y_perm,
+      ncomp = optimal_ncomp,
+      keepX = optimal_keepX,
+      design = design,
+      scale = FALSE
+    )
+  }, error = function(e) {
+    cat("  Permutation", i, "failed:", e$message, "\n")
+    NULL
+  })
+  
+  if (!is.null(perm_model)) {
+    perm_perf <- tryCatch({
+      perf(perm_model, validation = 'loo', progressBar = FALSE)
+    }, error = function(e) {
+      cat("  Performance evaluation failed for permutation", i, "\n")
+      NULL
+    })
+    
+    if (!is.null(perm_perf)) {
+      # Safely extract error rate
+      tryCatch({
+        error_rate <- perm_perf$error.rate$overall["Overall.ER", "centroids.dist", 1]
+        if (!is.na(error_rate) && length(error_rate) > 0) {
+          perm_errors[i] <- error_rate
+          perm_success <- perm_success + 1
+        } else {
+          perm_errors[i] <- NA
+        }
+      }, error = function(e) {
+        perm_errors[i] <- NA
+      })
+    } else {
+      perm_errors[i] <- NA
+    }
+  } else {
+    perm_errors[i] <- NA
+  }
+  
+  if (i %% 10 == 0) cat("  Completed", i, "/", n_perm, "permutations (", perm_success, "successful)\n")
+}
+
+# Calculate p-value if we have enough successful permutations
+perm_errors_clean <- perm_errors[!is.na(perm_errors)]
+
+if (length(perm_errors_clean) >= 10) {
+  # Safely extract true error rate
+  true_error <- tryCatch({
+    perf_result$error.rate$overall["Overall.ER", "centroids.dist", 1]
+  }, error = function(e) {
+    cat("Warning: Could not extract true error rate\n")
+    NA
+  })
+  
+  if (!is.na(true_error) && length(true_error) > 0) {
+    p_value <- (sum(perm_errors_clean <= true_error) + 1) / (length(perm_errors_clean) + 1)
+    
+    cat("\nPermutation Test Results:\n")
+    cat("  True error rate:", round(true_error, 3), "\n")
+    cat("  Mean permuted error:", round(mean(perm_errors_clean), 3), "\n")
+    cat("  SD permuted error:", round(sd(perm_errors_clean), 3), "\n")
+    cat("  P-value:", round(p_value, 4), "\n")
+    cat("  Significant (p < 0.05):", p_value < 0.05, "\n")
+    cat("  Successful permutations:", length(perm_errors_clean), "/", n_perm, "\n")
+    
+    # Save permutation results
+    perm_df <- data.frame(
+      true_error = true_error,
+      perm_mean_error = mean(perm_errors_clean),
+      perm_sd_error = sd(perm_errors_clean),
+      p_value = p_value,
+      n_permutations = length(perm_errors_clean),
+      significant = p_value < 0.05
+    )
+    
+    write.csv(perm_df, 
+             file.path(output_dir, "permutation_test.csv"),
+             row.names = FALSE)
+    
+    # Save all permutation errors
+    write.csv(data.frame(permutation = 1:length(perm_errors_clean), 
+                         error_rate = perm_errors_clean),
+             file.path(output_dir, "permutation_errors.csv"),
+             row.names = FALSE)
+  } else {
+    cat("\nWarning: Could not extract true error rate for permutation test\n")
+  }
+} else {
+  cat("\nWarning: Too few successful permutations (", length(perm_errors_clean), "). Skipping permutation test.\n")
+}
 
 # ============================================================================
 # EXTRACT RESULTS

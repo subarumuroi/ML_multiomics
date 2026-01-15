@@ -111,21 +111,11 @@ def run_multi_omics_integration(data_paths: dict, output_dir: str = "results/mul
     
     return workflow, results
 
-
 def generate_summary_report(single_results: dict, 
                            multi_results: dict,
                            output_file: str = "results/analysis_summary.txt"):
     """
     Generate text summary of all analyses.
-    
-    Parameters
-    ----------
-    single_results : dict
-        Results from single omics analyses
-    multi_results : dict
-        Results from multi-omics integration
-    output_file : str
-        Output file path
     """
     with open(output_file, 'w') as f:
         f.write("="*80 + "\n")
@@ -188,7 +178,6 @@ def generate_summary_report(single_results: dict,
                     f.write(f"    - {row['Feature']} (VIP = {row['VIP']:.2f})\n")
     
     print(f"\nSummary report saved to: {output_file}")
-
 
 def create_overview_visualizations(data_paths: dict, 
                                    single_results: dict,

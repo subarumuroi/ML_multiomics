@@ -35,10 +35,10 @@ MULTI-OMICS INTEGRATION RESULTS
 
 DIABLO Block Correlations:
                 amino_acids  central_carbon  aromatics  proteomics
-amino_acids        1.000000        0.996662   0.903638    0.996354
-central_carbon     0.996662        1.000000   0.921619    0.997760
-aromatics          0.903638        0.921619   1.000000    0.925388
-proteomics         0.996354        0.997760   0.925388    1.000000
+amino_acids        1.000000        0.945556   0.333136    0.984801
+central_carbon     0.945556        1.000000   0.309628    0.958499
+aromatics          0.333136        0.309628   1.000000    0.463680
+proteomics         0.984801        0.958499   0.463680    1.000000
 
 Concatenation Baseline (Leave-One-Out):
   Accuracy: 100.00% ± 0.00%
@@ -46,21 +46,21 @@ Concatenation Baseline (Leave-One-Out):
 Top Features Across All Omics:
 
   amino_acids:
-    - GLU (VIP = 10.00)
-    - VAL (VIP = 9.00)
-    - MET (VIP = 8.00)
+    - VAL (VIP = 3.00)
+    - ASP (VIP = 2.00)
+    - GLU (VIP = 1.00)
 
   central_carbon:
-    - 53_UMP 0.0 : Conc. (nM) (VIP = 10.00)
-    - 48_SUCC_0.0 : Conc. (nM) (VIP = 9.00)
-    - 28_GMP 0.0 : Conc. (nM) (VIP = 8.00)
+    - 48_SUCC_0.0 : Conc. (nM) (VIP = 3.00)
+    - 13_ATP_0.0 : Conc. (nM) (VIP = 2.00)
+    - 21_FUM_0.0 : Conc. (nM) (VIP = 1.00)
 
   aromatics:
-    - Ethyl stearate Area (VIP = 20.00)
-    - Benzaldehyde Area (VIP = 19.00)
-    - (Z)-beta-Ocimene Area (VIP = 18.00)
+    - 3-Methyl-2-buten-1-ol Area (VIP = 5.00)
+    - Benzaldehyde Area (VIP = 4.00)
+    - (Z)-beta-Ocimene Area (VIP = 3.00)
 
   proteomics:
-    - A0A4S8IES2;A0A4S8IES2;A0A4S8JWW7;A0A4S8JWW7;A0A804KF26 (VIP = 20.00)
-    - A0A804J9L6;A0A804J9L7;A0A804J9L8 (VIP = 19.00)
-    - A0A4S8JNV0;A0A4S8JNV0;A0A4V4H652;A0A4V4H652;A0A804HML7;A0A804HT39 (VIP = 18.00)
+    - A0A4S8J5V9;A0A4S8J5V9 (VIP = 13.00)
+    - A0A4S8JJ79;A0A4S8JJ79;A0A804JTL2;A0A804JTL3 (VIP = 12.00)
+    - A0A804IBQ9;A0A804IBR0 (VIP = 11.00)

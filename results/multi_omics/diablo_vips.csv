@@ -1,41 +1,22 @@
 Feature,VIP,Block,Important
-GLU,10,amino_acids,True
-VAL,9,amino_acids,True
-MET,8,amino_acids,True
-ASP,7,amino_acids,True
-LEU,6,amino_acids,True
-SER,5,amino_acids,True
-HIS,4,amino_acids,True
-GLN,3,amino_acids,True
-THR,2,amino_acids,True
-ASN,1,amino_acids,True
-53_UMP 0.0 : Conc. (nM),10,central_carbon,True
-48_SUCC_0.0 : Conc. (nM),9,central_carbon,True
-28_GMP 0.0 : Conc. (nM),8,central_carbon,True
-SH7P 0.0 : Conc. (nM),7,central_carbon,True
-32_KGA_0.0 : Conc. (nM),6,central_carbon,True
-2_3PG_0.0 : Conc. (nM),5,central_carbon,True
-13_ATP_0.0 : Conc. (nM),4,central_carbon,True
-54_UTP0.0 : Conc. (nM),3,central_carbon,True
-30_ISO_0.0 : Conc. (nM),2,central_carbon,True
-11_AMP 0.0 : Conc. (nM),1,central_carbon,True
-Ethyl stearate Area,20,aromatics,True
-Benzaldehyde Area,19,aromatics,True
-(Z)-beta-Ocimene Area,18,aromatics,True
-Phenylacetaldehyde Area,17,aromatics,True
-3-Octanone Area,16,aromatics,True
-Propyl hexanoate Area,15,aromatics,True
-1-Hexen-3-one Area,14,aromatics,True
-1-Pentanol Area,13,aromatics,True
-Ethyl benzoate Area,12,aromatics,True
-"2,4-Heptadienal Area",11,aromatics,True
-A0A4S8IES2;A0A4S8IES2;A0A4S8JWW7;A0A4S8JWW7;A0A804KF26,20,proteomics,True
-A0A804J9L6;A0A804J9L7;A0A804J9L8,19,proteomics,True
-A0A4S8JNV0;A0A4S8JNV0;A0A4V4H652;A0A4V4H652;A0A804HML7;A0A804HT39,18,proteomics,True
-A0A4S8KAR8;A0A4S8KAR8;A0A804IMY4,17,proteomics,True
-A0A804KIF4,16,proteomics,True
-A0A804JEZ2,15,proteomics,True
-A0A4S8I4C7;A0A4S8I4C7;A0A4S8I522;A0A4S8I522;A0A4S8I6F1;A0A4S8I6F1;A0A4S8I6L8;A0A4S8I6L8,14,proteomics,True
-A0A804KAE4,13,proteomics,True
-A0A804IIY3,12,proteomics,True
-A0A4V4HA99;A0A4V4HA99;A0A804IXH4,11,proteomics,True
+VAL,3,amino_acids,True
+ASP,2,amino_acids,True
+GLU,1,amino_acids,True
+48_SUCC_0.0 : Conc. (nM),3,central_carbon,True
+13_ATP_0.0 : Conc. (nM),2,central_carbon,True
+21_FUM_0.0 : Conc. (nM),1,central_carbon,True
+3-Methyl-2-buten-1-ol Area,5,aromatics,True
+Benzaldehyde Area,4,aromatics,True
+(Z)-beta-Ocimene Area,3,aromatics,True
+Ethyl stearate Area,2,aromatics,True
+3-Octanone Area,1,aromatics,True
+A0A4S8J5V9;A0A4S8J5V9,13,proteomics,True
+A0A4S8JJ79;A0A4S8JJ79;A0A804JTL2;A0A804JTL3,12,proteomics,True
+A0A804IBQ9;A0A804IBR0,11,proteomics,True
+A0A804KCN3,10,proteomics,True
+A0A4S8JP55;A0A4S8JP55,9,proteomics,True
+A0A4S8J9Z7;A0A4S8J9Z7;A0A804IBP8,8,proteomics,True
+A0A4S8K7A7;A0A4S8K7A7,7,proteomics,True
+A0A804IGQ5,6,proteomics,True
+A0A4S8J1S9;A0A4S8J1S9,5,proteomics,True
+A0A804KG28,4,proteomics,True
