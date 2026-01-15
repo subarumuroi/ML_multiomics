@@ -51,16 +51,16 @@ Top Features Across All Omics:
     - MET (VIP = 8.00)
 
   central_carbon:
-    - X53_UMP.0.0...Conc...nM. (VIP = 10.00)
-    - X48_SUCC_0.0...Conc...nM. (VIP = 9.00)
-    - X28_GMP.0.0...Conc...nM. (VIP = 8.00)
+    - 53_UMP 0.0 : Conc. (nM) (VIP = 10.00)
+    - 48_SUCC_0.0 : Conc. (nM) (VIP = 9.00)
+    - 28_GMP 0.0 : Conc. (nM) (VIP = 8.00)
 
   aromatics:
-    - Ethyl.stearate.Area (VIP = 20.00)
-    - Benzaldehyde.Area (VIP = 19.00)
-    - X.Z..beta.Ocimene.Area (VIP = 18.00)
+    - Ethyl stearate Area (VIP = 20.00)
+    - Benzaldehyde Area (VIP = 19.00)
+    - (Z)-beta-Ocimene Area (VIP = 18.00)
 
   proteomics:
-    - A0A4S8IES2.A0A4S8IES2.A0A4S8JWW7.A0A4S8JWW7.A0A804KF26 (VIP = 20.00)
-    - A0A804J9L6.A0A804J9L7.A0A804J9L8 (VIP = 19.00)
-    - A0A4S8JNV0.A0A4S8JNV0.A0A4V4H652.A0A4V4H652.A0A804HML7.A0A804HT39 (VIP = 18.00)
+    - A0A4S8IES2;A0A4S8IES2;A0A4S8JWW7;A0A4S8JWW7;A0A804KF26 (VIP = 20.00)
+    - A0A804J9L6;A0A804J9L7;A0A804J9L8 (VIP = 19.00)
+    - A0A4S8JNV0;A0A4S8JNV0;A0A4V4H652;A0A4V4H652;A0A804HML7;A0A804HT39 (VIP = 18.00)

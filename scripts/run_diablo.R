@@ -38,7 +38,7 @@ X <- list()
 for (i in seq_along(block_files)) {
   block_name <- block_names[i]
   cat("Loading block:", block_name, "\n")
-  X[[block_name]] <- as.matrix(read.csv(block_files[i], row.names = 1))
+  X[[block_name]] <- as.matrix(read.csv(block_files[i], row.names = 1, check.names = FALSE))
 }
 
 # Load labels

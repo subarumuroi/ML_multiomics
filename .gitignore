@@ -210,3 +210,6 @@ __marimo__/
 # OS files
 .DS_Store
 Thumbs.db
+results/
+*.pyc
+__pycache__/
