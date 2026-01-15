@@ -317,3 +317,144 @@ class DIABLO:
         
         plt.tight_layout()
         return fig, ax
+
+    def plot_arrow_plot(self,
+                        y: np.ndarray,
+                        comp_x: int = 1,
+                        comp_y: int = 2,
+                        labels: Optional[List[str]] = None,
+                        figsize: Tuple[int, int] = (12, 10)):
+            """
+            Create arrow plot showing agreement between blocks.
+            
+            Each sample is plotted with arrows connecting its position
+            in different omics blocks.
+            
+            Parameters
+            ----------
+            y : np.ndarray
+                Group labels
+            comp_x, comp_y : int
+                Which components to plot (1-indexed)
+            labels : list, optional
+                Custom labels for groups
+            figsize : tuple
+                Figure size
+                
+            Returns
+            -------
+            fig, ax : matplotlib figure and axis
+            """
+            comp_x_idx = comp_x - 1
+            comp_y_idx = comp_y - 1
+            
+            fig, ax = plt.subplots(figsize=figsize)
+            
+            unique_groups = np.unique(y)
+            colors = sns.color_palette('husl', n_colors=len(unique_groups))
+            
+            # Calculate average position for each sample
+            n_samples = self.scores[self.block_names[0]].shape[0]
+            avg_scores = np.zeros((n_samples, 2))
+            
+            for name in self.block_names:
+                scores = self.scores[name]
+                avg_scores[:, 0] += scores[:, comp_x_idx]
+                avg_scores[:, 1] += scores[:, comp_y_idx]
+            
+            avg_scores /= len(self.block_names)
+            
+            # Plot arrows from each block to average position
+            for name in self.block_names:
+                scores = self.scores[name]
+                
+                for i in range(n_samples):
+                    x_start = scores[i, comp_x_idx]
+                    y_start = scores[i, comp_y_idx]
+                    x_end = avg_scores[i, 0]
+                    y_end = avg_scores[i, 1]
+                    
+                    ax.arrow(x_start, y_start, 
+                            x_end - x_start, y_end - y_start,
+                            head_width=0.1, head_length=0.1,
+                            fc='gray', ec='gray', alpha=0.3, linewidth=0.5)
+            
+            # Plot average positions
+            for i, group in enumerate(unique_groups):
+                mask = y == group
+                label = labels[i] if labels else str(group)
+                
+                ax.scatter(
+                    avg_scores[mask, 0],
+                    avg_scores[mask, 1],
+                    c=[colors[i]], s=200, alpha=0.8,
+                    label=label, edgecolors='black', linewidth=2,
+                    marker='s', zorder=5
+                )
+            
+            ax.axhline(y=0, color='gray', linestyle='--', alpha=0.3, linewidth=1)
+            ax.axvline(x=0, color='gray', linestyle='--', alpha=0.3, linewidth=1)
+            
+            ax.set_xlabel(f'Component {comp_x}', fontsize=12, fontweight='bold')
+            ax.set_ylabel(f'Component {comp_y}', fontsize=12, fontweight='bold')
+            ax.set_title('DIABLO Arrow Plot (Block Agreement)', fontsize=14, fontweight='bold')
+            ax.legend(frameon=True, fontsize=11)
+            ax.grid(True, alpha=0.2)
+            
+            plt.tight_layout()
+            return fig, ax
+    
+    def plot_circos(self, 
+                   threshold: float = 0.7,
+                   figsize: Tuple[int, int] = (10, 10)):
+        """
+        Create a simplified circos-like plot showing block relationships.
+        
+        Parameters
+        ----------
+        threshold : float
+            Correlation threshold for drawing connections
+        figsize : tuple
+            Figure size
+            
+        Returns
+        -------
+        fig, ax : matplotlib figure and axis
+        """
+        corr_df = self.calculate_block_correlations()
+        n_blocks = len(self.block_names)
+        
+        fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(projection='polar'))
+        
+        # Position blocks around circle
+        angles = np.linspace(0, 2 * np.pi, n_blocks, endpoint=False)
+        
+        # Plot blocks as points
+        for i, (angle, name) in enumerate(zip(angles, self.block_names)):
+            ax.plot([angle], [1], 'o', markersize=20, label=name)
+            ax.text(angle, 1.15, name, ha='center', va='center', 
+                   fontsize=12, fontweight='bold')
+        
+        # Draw connections for high correlations
+        for i in range(n_blocks):
+            for j in range(i + 1, n_blocks):
+                corr = corr_df.iloc[i, j]
+                if abs(corr) >= threshold:
+                    theta = np.linspace(angles[i], angles[j], 100)
+                    r = 1 - 0.3 * np.sin(np.linspace(0, np.pi, 100))
+                    
+                    color = 'red' if corr > 0 else 'blue'
+                    alpha = abs(corr)
+                    
+                    ax.plot(theta, r, color=color, alpha=alpha, linewidth=2)
+        
+        ax.set_ylim(0, 1.2)
+        ax.set_yticks([])
+        ax.set_xticks([])
+        ax.spines['polar'].set_visible(False)
+        
+        ax.set_title(f'Block Correlations (threshold = {threshold})', 
+                    fontsize=14, fontweight='bold', pad=20)
+        
+        plt.tight_layout()
+        return fig, ax
