@@ -22,6 +22,25 @@ A comprehensive Python framework for analyzing and integrating multi-omics datas
 
 ## Installation
 
+### Prerequisites
+
+**R and R Packages Required:**
+
+DIABLO integration uses R's mixOmics package. Install R dependencies first:
+```bash
+# Check R is installed
+Rscript --version
+
+# Quick install - run the provided script
+Rscript scripts/install_r_deps.R
+
+# Or install manually
+Rscript -e "install.packages('BiocManager')"
+Rscript -e "BiocManager::install('mixOmics')"
+Rscript -e "install.packages('jsonlite')"
+```
+
+**Python Installation:**
 ```bash
 # Create conda environment (recommended)
 conda create -n ml_multiomics python=3.9
@@ -69,9 +88,14 @@ ml_multiomics/
 │       ├── utils/
 │       │   ├── validation.py
 │       │   ├── visualization.py
+│       │   ├── r_interface.py
 │       │   └── __init__.py
 │       │
 │       └── __init__.py
+│
+├── scripts/
+│   ├── run_diablo.R
+│   └── install_r_deps.R 
 │
 ├── examples/
 │   └── example_complete_analysis.py
@@ -199,13 +223,13 @@ workflow = SingleOmicsWorkflow(
 - Drop threshold: 60% (more lenient for sparse data)
 - Imputation: Conservative group-wise median
 - Transform: Log
-- Scaling: Standard
+- Scaling: Pareto
 
 **Proteomics:**
 - Drop threshold: 30% (stricter)
-- Imputation: Minimal (assumes pre-imputed)
+- Imputation: Group-wise median
 - Transform: Log2
-- Scaling: Standard
+- Scaling: Pareto
 
 ## Output Files
 

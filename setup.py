@@ -2,6 +2,11 @@
 Setup file for ml_multiomics package.
 
 Installation:
+    # Install R dependencies first (required for DIABLO)
+    Rscript -e "install.packages('BiocManager'); BiocManager::install('mixOmics')"
+    Rscript -e "install.packages('jsonlite')"
+
+    # Then install the Python package
     pip install -e .
 
 Or for development:
