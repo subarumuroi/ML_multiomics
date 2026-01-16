@@ -129,46 +129,56 @@ class DIABLO:
     
     def get_block_vip(self, block_name: str) -> pd.DataFrame:
         """
-        Get important features for a specific block.
+        Get VIP scores for a specific block.
         
         Parameters
         ----------
         block_name : str
-            Name of the block
+            Name of block
             
         Returns
         -------
         pd.DataFrame
-            Important features for this block
+            VIP scores for block
         """
         if block_name not in self.selected_features:
-            return pd.DataFrame(columns=['Feature', 'VIP', 'Block', 'Important'])
+            raise ValueError(f"Block '{block_name}' not found")
         
         selected_df = self.selected_features[block_name].copy()
         
-        # Add block name
-        selected_df['Block'] = block_name
-        selected_df['Important'] = True
+        # Reset index if it's the index (from read_csv with index_col=0)
+        if selected_df.index.name is None or selected_df.index.name != 'Feature':
+            selected_df = selected_df.reset_index(drop=False)
         
-        # Ensure we have 'Feature' column
+        # Handle different column name cases from R
         if 'feature' in selected_df.columns:
-            selected_df = selected_df.rename(columns={'feature': 'Feature'})
-        elif 'Feature' not in selected_df.columns and selected_df.index.name is None:
-            selected_df['Feature'] = selected_df.index
+            selected_df.rename(columns={'feature': 'Feature'}, inplace=True)
+        elif 'index' in selected_df.columns:
+            selected_df.rename(columns={'index': 'Feature'}, inplace=True)
         
-        # Use loading value as VIP (absolute value)
-        if 'value.var' in selected_df.columns:
-            selected_df['VIP'] = selected_df['value.var'].abs()
-        elif 'comp1' in selected_df.columns:
-            selected_df['VIP'] = selected_df['comp1'].abs()
-        else:
-            # Rank by appearance order
-            selected_df['VIP'] = np.arange(len(selected_df), 0, -1)
+        # Ensure Feature column exists
+        if 'Feature' not in selected_df.columns:
+            if selected_df.index.name:
+                selected_df['Feature'] = selected_df.index
+            else:
+                raise ValueError(f"Cannot identify feature names in block {block_name}")
         
-        # Sort and return key columns
-        selected_df = selected_df.sort_values('VIP', ascending=False)
-        return selected_df[['Feature', 'VIP', 'Block', 'Important']].reset_index(drop=True)
+        # Add Block column if not present
+        if 'Block' not in selected_df.columns:
+            selected_df['Block'] = block_name
         
+        # Add Important flag based on VIP threshold
+        if 'Important' not in selected_df.columns:
+            if 'VIP' in selected_df.columns:
+                selected_df['Important'] = selected_df['VIP'] > 1.0
+            else:
+                selected_df['Important'] = True
+        
+        # Return with expected columns, only if they exist
+        available_cols = [col for col in ['Feature', 'VIP', 'Block', 'Important'] 
+                         if col in selected_df.columns]
+        return selected_df[available_cols].reset_index(drop=True)
+
     def get_all_vips(self, top_n: int = 20) -> pd.DataFrame:
         """
         Get top features across all blocks.

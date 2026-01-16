@@ -46,21 +46,21 @@ Concatenation Baseline (Leave-One-Out):
 Top Features Across All Omics:
 
   amino_acids:
-    - VAL (VIP = 3.00)
-    - ASP (VIP = 2.00)
-    - GLU (VIP = 1.00)
+    - VAL (VIP = 3.30)
+    - ASP (VIP = 3.17)
+    - GLU (VIP = 0.27)
 
   central_carbon:
-    - 48_SUCC_0.0 : Conc. (nM) (VIP = 3.00)
-    - 13_ATP_0.0 : Conc. (nM) (VIP = 2.00)
-    - 21_FUM_0.0 : Conc. (nM) (VIP = 1.00)
+    - 48_SUCC_0.0 : Conc. (nM) (VIP = 4.61)
+    - 13_ATP_0.0 : Conc. (nM) (VIP = 2.92)
+    - 21_FUM_0.0 : Conc. (nM) (VIP = 1.79)
 
   aromatics:
-    - 3-Methyl-2-buten-1-ol Area (VIP = 5.00)
-    - Benzaldehyde Area (VIP = 4.00)
-    - (Z)-beta-Ocimene Area (VIP = 3.00)
+    - 3-Methyl-2-buten-1-ol Area (VIP = 8.23)
+    - Benzaldehyde Area (VIP = 3.82)
+    - (Z)-beta-Ocimene Area (VIP = 3.03)
 
   proteomics:
-    - A0A4S8J5V9;A0A4S8J5V9 (VIP = 13.00)
-    - A0A4S8JJ79;A0A4S8JJ79;A0A804JTL2;A0A804JTL3 (VIP = 12.00)
-    - A0A804IBQ9;A0A804IBR0 (VIP = 11.00)
+    - A0A4S8J5V9;A0A4S8J5V9 (VIP = 46.04)
+    - A0A4S8JJ79;A0A4S8JJ79;A0A804JTL2;A0A804JTL3 (VIP = 33.58)
+    - A0A804IBQ9;A0A804IBR0 (VIP = 29.23)

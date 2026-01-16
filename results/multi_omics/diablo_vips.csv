@@ -1,22 +1,22 @@
 Feature,VIP,Block,Important
-VAL,3,amino_acids,True
-ASP,2,amino_acids,True
-GLU,1,amino_acids,True
-48_SUCC_0.0 : Conc. (nM),3,central_carbon,True
-13_ATP_0.0 : Conc. (nM),2,central_carbon,True
-21_FUM_0.0 : Conc. (nM),1,central_carbon,True
-3-Methyl-2-buten-1-ol Area,5,aromatics,True
-Benzaldehyde Area,4,aromatics,True
-(Z)-beta-Ocimene Area,3,aromatics,True
-Ethyl stearate Area,2,aromatics,True
-3-Octanone Area,1,aromatics,True
-A0A4S8J5V9;A0A4S8J5V9,13,proteomics,True
-A0A4S8JJ79;A0A4S8JJ79;A0A804JTL2;A0A804JTL3,12,proteomics,True
-A0A804IBQ9;A0A804IBR0,11,proteomics,True
-A0A804KCN3,10,proteomics,True
-A0A4S8JP55;A0A4S8JP55,9,proteomics,True
-A0A4S8J9Z7;A0A4S8J9Z7;A0A804IBP8,8,proteomics,True
-A0A4S8K7A7;A0A4S8K7A7,7,proteomics,True
-A0A804IGQ5,6,proteomics,True
-A0A4S8J1S9;A0A4S8J1S9,5,proteomics,True
-A0A804KG28,4,proteomics,True
+VAL,3.3016860212345,amino_acids,True
+ASP,3.16619914582028,amino_acids,True
+GLU,0.272125680874892,amino_acids,False
+48_SUCC_0.0 : Conc. (nM),4.61196580790661,central_carbon,True
+13_ATP_0.0 : Conc. (nM),2.91713278996529,central_carbon,True
+21_FUM_0.0 : Conc. (nM),1.79446584598582,central_carbon,True
+3-Methyl-2-buten-1-ol Area,8.23133128709726,aromatics,True
+Benzaldehyde Area,3.82454706822973,aromatics,True
+(Z)-beta-Ocimene Area,3.03301030272748,aromatics,True
+Ethyl stearate Area,2.6613897806906,aromatics,True
+3-Octanone Area,0.579549742242872,aromatics,False
+A0A4S8J5V9;A0A4S8J5V9,46.0407909611685,proteomics,True
+A0A4S8JJ79;A0A4S8JJ79;A0A804JTL2;A0A804JTL3,33.579034886382,proteomics,True
+A0A804IBQ9;A0A804IBR0,29.2310174165007,proteomics,True
+A0A804KCN3,18.6330792158693,proteomics,True
+A0A4S8JP55;A0A4S8JP55,17.4075709247534,proteomics,True
+A0A4S8J9Z7;A0A4S8J9Z7;A0A804IBP8,10.412495550533,proteomics,True
+A0A4S8K7A7;A0A4S8K7A7,9.39116159525271,proteomics,True
+A0A804IGQ5,6.64826328523282,proteomics,True
+A0A4S8J1S9;A0A4S8J1S9,6.42752919694014,proteomics,True
+A0A804KG28,5.87833865608297,proteomics,True

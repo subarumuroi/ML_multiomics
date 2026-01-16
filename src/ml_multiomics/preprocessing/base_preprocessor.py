@@ -168,17 +168,18 @@ class BasePreprocessor(ABC):
                 self.mean_ = np.mean(X, axis=0)
                 self.std_ = np.std(X, axis=0)
 
-                # Protect against zero variance
-                std_safe = np.where(self.std_ == 0, 1, self.std_)
+                # Check for zero-variance features (should not happen due to removal step)
                 n_zero_var = (self.std_ == 0).sum()
                 if n_zero_var > 0:
-                    self._log(f"Warning: {n_zero_var} zero-variance features will not be scaled")
+                    raise ValueError(
+                        f"{n_zero_var} zero-variance features detected after preprocessing. "
+                        "This should not happen - check the _remove_zero_variance_features step."
+                    )
 
-                X_scaled = (X - self.mean_) / np.sqrt(std_safe)
+                X_scaled = (X - self.mean_) / np.sqrt(self.std_)
                 self._log("Applied Pareto scaling")
             else:
-                std_safe = np.where(self.std_ == 0, 1, self.std_)
-                X_scaled = (X - self.mean_) / np.sqrt(std_safe)
+                X_scaled = (X - self.mean_) / np.sqrt(self.std_)
         
         else:
             X_scaled = X
@@ -230,6 +231,9 @@ class BasePreprocessor(ABC):
         # there was a bug where sample name strings were causeing errors downstream
         X = np.array(X, dtype=float)
         
+        # Step 3.5: Remove zero-variance features (no discriminatory power)
+        X, self.feature_names = self._remove_zero_variance_features(X, self.feature_names)
+        
         # Step 4: Apply transformation
         X = self.apply_transformation(X)
         
@@ -254,6 +258,42 @@ class BasePreprocessor(ABC):
     def print_log(self):
         """Print preprocessing log."""
         print("\n".join(self.preprocessing_log))
+
+    def _remove_zero_variance_features(self, 
+                                        X: np.ndarray, 
+                                        feature_names: list) -> Tuple[np.ndarray, list]:
+        """
+        Remove features with zero variance (identical values across all samples).
+        
+        Zero-variance features have no discriminatory power and should be removed
+        before analysis.
+        
+        Parameters
+        ----------
+        X : np.ndarray
+            Feature matrix
+        feature_names : list
+            Feature names
+            
+        Returns
+        -------
+        X_filtered : np.ndarray
+            Features with zero-variance columns removed
+        feature_names_filtered : list
+            Updated feature names
+        """
+        variances = np.var(X, axis=0)
+        zero_var_mask = variances > 0
+        n_removed = (~zero_var_mask).sum()
+        
+        if n_removed > 0:
+            self._log(f"Removed {n_removed} zero-variance features (no discriminatory power)")
+            X_filtered = X[:, zero_var_mask]
+            feature_names_filtered = [name for name, keep in zip(feature_names, zero_var_mask) if keep]
+            return X_filtered, feature_names_filtered
+        else:
+            self._log(f"All {len(feature_names)} features have variance > 0")
+            return X, feature_names
 
     def _check_data_quality(self, X: np.ndarray) -> np.ndarray:
         """

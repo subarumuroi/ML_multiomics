@@ -345,15 +345,34 @@ loadings <- lapply(final_model$loadings, function(l) {
   as.data.frame(l)
 })
 
-# Variable selection (selected features per component)
+# Variable selection (selected features per component) with VIP scores
 selected_vars <- selectVar(final_model, comp = 1)
 
-# Save selected features for each block
+# Save selected features for each block WITH ACTUAL VIP VALUES
 for (block_name in names(X)) {
   if (!is.null(selected_vars[[block_name]])) {
+    # Get the value.var which contains actual VIP-like importance scores
     sel_df <- as.data.frame(selected_vars[[block_name]]$value)
     sel_df$feature <- rownames(sel_df)
-    write.csv(sel_df, 
+
+    # Get VIP scores from the model
+    vip_scores <- vip(final_model, block = block_name, comp = 1)
+    vip_scores <- as.data.frame(vip_scores)
+    colnames(vip_scores) <- "VIP"
+    vip_scores$feature <- rownames(vip_scores)  
+
+    # Match to selected features
+    sel_features <- rownames(sel_df)
+    vip_df <- data.frame(
+      Feature = sel_features,
+      VIP = vip_scores[sel_features],
+      Loading_Comp1 = loadings_block[sel_features, 1]
+    )
+    
+    # Sort by VIP
+    vip_df <- vip_df[order(-vip_scores$VIP), ]
+    
+    write.csv(vip_df, 
              file.path(output_dir, paste0("selected_features_", block_name, ".csv")),
              row.names = FALSE)
   }

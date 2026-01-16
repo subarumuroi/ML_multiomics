@@ -352,7 +352,7 @@ class MultiOmicsWorkflow:
         print(f"Feature:Sample Ratio: {feature_to_sample_ratio:.0f}:1")
         print(f"\n⚠️  HIGH OVERFITTING RISK")
         print("   Results are hypothesis-generating only")
-        print("   Permutation tests critical for validation")
+        print("   Recommend validation with n>30")
         print("="*60)
 
     def run_full_integration(self,
