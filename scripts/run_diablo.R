@@ -345,34 +345,72 @@ loadings <- lapply(final_model$loadings, function(l) {
   as.data.frame(l)
 })
 
-# Variable selection (selected features per component) with VIP scores
-selected_vars <- selectVar(final_model, comp = 1)
+# Calculate actual VIP scores using mixOmics vip() function
+cat("\nCalculating Variable Importance in Projection (VIP) scores...\n")
 
-# Save selected features for each block WITH ACTUAL VIP VALUES
-for (block_name in names(X)) {
-  if (!is.null(selected_vars[[block_name]])) {
-    # Get the value.var which contains actual VIP-like importance scores
-    sel_df <- as.data.frame(selected_vars[[block_name]]$value)
-    sel_df$feature <- rownames(sel_df)
+vip_scores <- tryCatch({
+  vip(final_model)
+}, error = function(e) {
+  cat("Warning: VIP calculation failed:", e$message, "\n")
+  NULL
+})
 
-    # Get loadings for this block
-    loadings_block <- loadings[[block_name]]
-    
-    # Create VIP-like score dataframe
-    sel_features <- rownames(sel_df)
-    
-    vip_df <- data.frame(
-      Feature = sel_features,
-      VIP = sel_df[sel_features, 1],  # Use selectVar values as importance scores
-      Loading_Comp1 = if(nrow(loadings_block) > 0) loadings_block[sel_features, 1] else NA
-    )
-    
-    # Sort by VIP
-    vip_df <- vip_df[order(-vip_df$VIP), ]
-    
-    write.csv(vip_df, 
-             file.path(output_dir, paste0("selected_features_", block_name, ".csv")),
-             row.names = FALSE)
+# Save VIP scores for each block
+if (!is.null(vip_scores)) {
+  for (block_name in names(X)) {
+    if (!is.null(vip_scores[[block_name]])) {
+      # Get VIP scores for this block
+      vip_block <- as.data.frame(vip_scores[[block_name]])
+      vip_block$Feature <- rownames(vip_block)
+      
+      # Get loadings for this block
+      loadings_block <- loadings[[block_name]]
+      
+      # Merge with loadings for reference
+      colnames(vip_block)[1] <- "VIP"
+      vip_df <- vip_block[, c("Feature", "VIP")]
+      
+      if (nrow(loadings_block) > 0) {
+        # Add loading values for reference
+        vip_df$Loading_Comp1 <- loadings_block[vip_df$Feature, 1]
+      }
+      
+      # Sort by VIP descending
+      vip_df <- vip_df[order(-vip_df$VIP), ]
+      
+      write.csv(vip_df, 
+               file.path(output_dir, paste0("selected_features_", block_name, ".csv")),
+               row.names = FALSE)
+      
+      cat("Saved VIP scores for", block_name, "- max VIP:", round(max(vip_df$VIP, na.rm=TRUE), 2), "\n")
+    }
+  }
+} else {
+  # Fallback: use absolute loadings if VIP fails
+  cat("Warning: Using absolute loadings as fallback for feature importance\n")
+  selected_vars <- selectVar(final_model, comp = 1)
+  
+  for (block_name in names(X)) {
+    if (!is.null(selected_vars[[block_name]])) {
+      # Use absolute values of loadings
+      loadings_block <- loadings[[block_name]]
+      
+      # Get selected features
+      sel_features <- rownames(as.data.frame(selected_vars[[block_name]]$value))
+      
+      # Create dataframe with absolute loading values
+      vip_df <- data.frame(
+        Feature = sel_features,
+        VIP = abs(loadings_block[sel_features, 1]),
+        Loading_Comp1 = loadings_block[sel_features, 1]
+      )
+      
+      vip_df <- vip_df[order(-vip_df$VIP), ]
+      
+      write.csv(vip_df, 
+               file.path(output_dir, paste0("selected_features_", block_name, ".csv")),
+               row.names = FALSE)
+    }
   }
 }
 
