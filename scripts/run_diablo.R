@@ -355,22 +355,20 @@ for (block_name in names(X)) {
     sel_df <- as.data.frame(selected_vars[[block_name]]$value)
     sel_df$feature <- rownames(sel_df)
 
-    # Get VIP scores from the model
-    vip_scores <- vip(final_model, block = block_name, comp = 1)
-    vip_scores <- as.data.frame(vip_scores)
-    colnames(vip_scores) <- "VIP"
-    vip_scores$feature <- rownames(vip_scores)  
-
-    # Match to selected features
+    # Get loadings for this block
+    loadings_block <- loadings[[block_name]]
+    
+    # Create VIP-like score dataframe
     sel_features <- rownames(sel_df)
+    
     vip_df <- data.frame(
       Feature = sel_features,
-      VIP = vip_scores[sel_features],
-      Loading_Comp1 = loadings_block[sel_features, 1]
+      VIP = sel_df[sel_features, 1],  # Use selectVar values as importance scores
+      Loading_Comp1 = if(nrow(loadings_block) > 0) loadings_block[sel_features, 1] else NA
     )
     
     # Sort by VIP
-    vip_df <- vip_df[order(-vip_scores$VIP), ]
+    vip_df <- vip_df[order(-vip_df$VIP), ]
     
     write.csv(vip_df, 
              file.path(output_dir, paste0("selected_features_", block_name, ".csv")),
