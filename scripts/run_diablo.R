@@ -444,3 +444,151 @@ write_json(model_summary,
 
 cat("\n=== DIABLO Analysis Complete ===\n")
 cat("Results saved to:", output_dir, "\n")
+
+# ============================================================================
+# GENERATE PUBLICATION-QUALITY VISUALIZATIONS USING MIXOMICS
+# ============================================================================
+
+cat("\n=== Generating Publication Plots ===\n")
+
+plots_dir <- file.path(output_dir, "publication_plots")
+dir.create(plots_dir, showWarnings = FALSE, recursive = TRUE)
+
+# 1. DIABLO Sample Plot
+cat("Generating plotDiablo...\n")
+tryCatch({
+  png(file.path(plots_dir, "01_DIABLO_samples.png"), width = 1000, height = 800, res = 100)
+  plotDiablo(final_model, 
+            ncomp = min(2, optimal_ncomp),
+            legend = TRUE,
+            legend.position = 'right',
+            title = 'DIABLO Sample Plot - Multi-Omics Integration',
+            size.xlabel = 13,
+            size.ylabel = 13)
+  dev.off()
+  cat("  ✓ Saved: 01_DIABLO_samples.png\n")
+}, error = function(e) {
+  cat("  ✗ plotDiablo failed:", e$message, "\n")
+})
+
+# 2. Individual Scores with Confidence Ellipses
+cat("Generating plotIndiv with ellipses...\n")
+tryCatch({
+  png(file.path(plots_dir, "02_DIABLO_indiv.png"), width = 1000, height = 800, res = 100)
+  plotIndiv(final_model,
+           comp = c(1, 2),
+           ind.names = FALSE,
+           ellipse = TRUE,
+           legend = TRUE,
+           legend.position = 'right',
+           title = 'DIABLO Individual Scores with Confidence Ellipses',
+           size.xlabel = 13,
+           size.ylabel = 13)
+  dev.off()
+  cat("  ✓ Saved: 02_DIABLO_indiv.png\n")
+}, error = function(e) {
+  cat("  ✗ plotIndiv failed:", e$message, "\n")
+})
+
+# 3. Variable Loadings
+cat("Generating plotVar...\n")
+tryCatch({
+  png(file.path(plots_dir, "03_DIABLO_var.png"), width = 1200, height = 800, res = 100)
+  plotVar(final_model,
+         comp = c(1, 2),
+         var.names = TRUE,
+         style = 'graphics',
+         legend = TRUE,
+         title = 'DIABLO Variable Loadings',
+         size.xlabel = 13,
+         size.ylabel = 13)
+  dev.off()
+  cat("  ✓ Saved: 03_DIABLO_var.png\n")
+}, error = function(e) {
+  cat("  ✗ plotVar failed:", e$message, "\n")
+})
+
+# 4. Loadings Comparison
+cat("Generating plotLoadings...\n")
+tryCatch({
+  png(file.path(plots_dir, "04_DIABLO_loadings.png"), width = 1200, height = 800, res = 100)
+  plotLoadings(final_model,
+              comp = 1,
+              contrib = 'max',
+              method = 'mean',
+              legend = TRUE,
+              legend.position = 'right',
+              title = 'DIABLO Loadings Comparison (Component 1)',
+              size.xlabel = 13,
+              size.ylabel = 13)
+  dev.off()
+  cat("  ✓ Saved: 04_DIABLO_loadings.png\n")
+}, error = function(e) {
+  cat("  ✗ plotLoadings failed:", e$message, "\n")
+})
+
+# 5. Arrow Plot
+cat("Generating plotArrow...\n")
+tryCatch({
+  png(file.path(plots_dir, "05_DIABLO_arrow.png"), width = 900, height = 800, res = 100)
+  plotArrow(final_model,
+           comp = c(1, 2),
+           legend = TRUE,
+           legend.position = 'right',
+           title = 'DIABLO Arrow Plot - Block Agreement',
+           size.xlabel = 13,
+           size.ylabel = 13)
+  dev.off()
+  cat("  ✓ Saved: 05_DIABLO_arrow.png\n")
+}, error = function(e) {
+  cat("  ✗ plotArrow failed:", e$message, "\n")
+})
+
+# 6. Circos Plot
+cat("Generating circosPlot...\n")
+tryCatch({
+  png(file.path(plots_dir, "06_DIABLO_circos.png"), width = 900, height = 900, res = 100)
+  circosPlot(final_model,
+            cutoff = 0.5,
+            ncol.legend = 2,
+            size.legend = 1)
+  title('DIABLO Circos Plot - Feature Correlations', cex.main = 1.5)
+  dev.off()
+  cat("  ✓ Saved: 06_DIABLO_circos.png\n")
+}, error = function(e) {
+  cat("  ✗ circosPlot failed:", e$message, "\n")
+})
+
+# 7. Clustered Image Map
+cat("Generating cimDiablo...\n")
+tryCatch({
+  png(file.path(plots_dir, "07_DIABLO_cim.png"), width = 1000, height = 900, res = 100)
+  cimDiablo(final_model,
+           color.grad = c('blue', 'white', 'red'),
+           legend.position = 'right',
+           margins = c(10, 10),
+           title = 'DIABLO Clustered Image Map')
+  dev.off()
+  cat("  ✓ Saved: 07_DIABLO_cim.png\n")
+}, error = function(e) {
+  cat("  ✗ cimDiablo failed:", e$message, "\n")
+})
+
+# 8. Network Plot
+cat("Generating network plot...\n")
+tryCatch({
+  png(file.path(plots_dir, "08_DIABLO_network.png"), width = 1000, height = 1000, res = 100)
+  network(final_model,
+         comp = 1,
+         threshold = 0.3,
+         color.node = color.mixo(1:length(X)),
+         shape.node = c('rectangle', 'circle', 'triangle'),
+         title = 'DIABLO Feature Correlation Network')
+  dev.off()
+  cat("  ✓ Saved: 08_DIABLO_network.png\n")
+}, error = function(e) {
+  cat("  ✗ network failed:", e$message, "\n")
+})
+
+cat("\n=== Publication Plots Generated ===\n")
+cat("Plots saved to:", plots_dir, "\n")

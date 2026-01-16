@@ -54,7 +54,7 @@ def run_diablo_r(data_blocks: Dict[str, pd.DataFrame],
     
     # Save blocks as CSV
     for block_name, df in data_blocks.items():
-        df_copy = df.copy()
+        df_copy = df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame(df)
         df_copy.index = sample_ids
         df_copy.to_csv(os.path.join(input_dir, f"block_{block_name}.csv"))
     

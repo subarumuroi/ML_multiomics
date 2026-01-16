@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import Dict, List, Tuple, Optional
 import subprocess
+import os
 from pathlib import Path
 
 from ml_multiomics.utils.r_interface import run_diablo_r
@@ -89,18 +90,22 @@ class DIABLO:
         print("Running DIABLO via R mixOmics...")
         
         import tempfile
+        import shutil
         from pathlib import Path
         
-        with tempfile.TemporaryDirectory() as temp_dir:
-            output_dir = Path(temp_dir) / 'diablo_results'
-            
-            self.r_results = run_diablo_r(
-                data_blocks=data_blocks,
-                y=y,
-                sample_ids=sample_ids,
-                output_dir=str(output_dir),
-                timeout=300
-            )
+        # Use persistent output directory (not temp) so plots are saved
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = f"results/multi_omics/diablo_output_{timestamp}"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        self.r_results = run_diablo_r(
+            data_blocks=data_blocks,
+            y=y,
+            sample_ids=sample_ids,
+            output_dir=str(output_dir),
+            timeout=300
+        )
         
         # Extract results
         self._extract_results()
