@@ -18,7 +18,35 @@ A comprehensive Python framework for analyzing and integrating multi-omics datas
 - **Cross-validation**: Leave-One-Out and K-Fold strategies
 - **Permutation testing**: Statistical validation
 - **Feature stability**: Assess robustness of feature selection
-- **Publication-quality plots**: Comprehensive visualization suite
+- **Publication-quality plots**: Comprehensive visualization suite using R/mixomics
+
+## Scientific Methods & Implementation
+
+### Variable Importance Calculation
+
+#### Single Omics (PLS-DA)
+- **VIP Scores**: Calculated using mixOmics native `vip()` function
+- **Interpretation**: Features with VIP > 1.0 are considered important
+- **Scale**: Typically ranges 1-4+ depending on feature discriminative power
+
+#### Multi-Omics Integration (DIABLO)
+- **Loadings**: DIABLO produces normalized loadings on [-1, 1] scale
+- **Scaling Approach**: Raw loadings are scaled to VIP-equivalent scale by:
+  1. Computing absolute value of loadings: |loading|
+  2. Finding maximum absolute loading across selected features
+  3. Normalizing: VIP_scaled = (|loading| / max_loading) × 1.5
+  4. This scales top features to ~1.5 range, comparable to PLS-DA VIP
+- **Threshold**: Features with scaled VIP > 1.0 are flagged as important
+- **Scientific Rationale**: DIABLO natively supports only component loadings (no VIP function). Scaling normalizes them to be directly comparable with single-omics PLS-DA results across all omics layers.
+
+### DIABLO Integration
+- **R/mixOmics**: Direct integration with mixOmics package for statistical rigor
+- **Visualization**: Publication-quality plots generated in R:
+  - `plotDiablo()`: Sample scores with block overlay
+  - `plotIndiv()`: Individual scores with confidence ellipses
+  - `plotLoadings()`: Loading weights across blocks
+  - `circosPlot()`: Feature correlations and block agreement
+- **Block Correlation**: Measures how well different omics blocks agree on sample discrimination
 
 ## Installation
 
@@ -327,3 +355,29 @@ For questions or issues, please contact [k.muroi@uq.edu.au].
 This framework implements methods from:
 - DIABLO: Singh et al. (2019) DIABLO: an integrative approach for identifying key molecular drivers from multi-omics assays
 - PLS-DA: Wold et al. (1983) The multivariate calibration problem in chemistry
+
+## Recent Implementation Notes (January 2026)
+
+### Bug Fixes & Improvements
+
+**VIP Score Calculation (Commit fe5860e, 3221101)**
+- Fixed: DIABLO VIP calculation was using `selectVar()` output directly
+- Issue: These are component loadings ([-1, 1] scale), not true VIP scores
+- Solution: Implemented normalization to scale DIABLO importance scores to VIP-equivalent range
+- Result: DIABLO features now properly comparable to single-omics PLS-DA results with VIP > 1 threshold
+
+**Data Format Handling (Commit 698c6a6)**
+- Fixed: R interface now handles both pandas DataFrame and numpy array inputs
+- Issue: DIABLO requires proper DataFrame conversion for R's mixOmics
+- Solution: Added type checking and automatic conversion in `r_interface.py`
+
+**R Visualization Integration (Commit 698c6a6)**
+- Implemented: Direct R/mixOmics visualization generation
+- Changed: From matplotlib approximations to native R publication plots
+- Output: Real statistical visualizations (plotDiablo, plotIndiv, plotLoadings, circosPlot)
+- Location: `results/multi_omics/diablo_output_[timestamp]/diablo_output/publication_plots/`
+
+**Code Cleanup (Commit 71b22c4)**
+- Removed: Obsolete matplotlib visualization wrapper methods
+- Removed: Old R visualization placeholder scripts
+- Kept: Active matplotlib methods for quick local visualization alongside R plots

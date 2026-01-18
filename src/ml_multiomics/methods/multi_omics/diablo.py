@@ -174,15 +174,21 @@ class DIABLO:
         if 'Block' not in selected_df.columns:
             selected_df['Block'] = block_name
         
-        # Add Important flag based on VIP threshold
+        # Add Important flag based on percentile rank (top 50% = important)
+        # Per mixOmics protocol: flag by rank/percentile, not arbitrary threshold
         if 'Important' not in selected_df.columns:
-            if 'VIP' in selected_df.columns:
-                selected_df['Important'] = selected_df['VIP'] > 1.0
+            if 'Percentile' in selected_df.columns:
+                # Top 50% of features in this block are flagged as important
+                selected_df['Important'] = selected_df['Percentile'] >= 50.0
+            elif 'VIP' in selected_df.columns:
+                # Fallback: flag top 50% by VIP magnitude
+                vip_threshold = selected_df['VIP'].quantile(0.5)
+                selected_df['Important'] = selected_df['VIP'] >= vip_threshold
             else:
                 selected_df['Important'] = True
         
         # Return with expected columns, only if they exist
-        available_cols = [col for col in ['Feature', 'VIP', 'Block', 'Important'] 
+        available_cols = [col for col in ['Feature', 'VIP', 'Percentile', 'Block', 'Important'] 
                          if col in selected_df.columns]
         return selected_df[available_cols].reset_index(drop=True)
 
