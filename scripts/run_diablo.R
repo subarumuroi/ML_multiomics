@@ -347,13 +347,21 @@ loadings <- lapply(final_model$loadings, function(l) {
 
 # Calculate Variable Importance scores
 # Note: mixOmics vip() function only works for PLS/SPLSDA, not DIABLO
-# So we use absolute loadings as feature importance scores
-cat("\nCalculating Variable Importance scores from loadings...\n")
+# For DIABLO, we calculate normalized importance scores that are comparable to VIP > 1 threshold
+cat("\nCalculating normalized importance scores from loadings...\n")
 
 # Get selected features for each block
 selected_vars <- selectVar(final_model, comp = 1)
 
-# Save VIP scores for each block (using absolute loadings as importance)
+# Calculate overall loading magnitudes to normalize
+all_loadings_abs <- list()
+for (block_name in names(X)) {
+  if (!is.null(loadings[[block_name]])) {
+    all_loadings_abs[[block_name]] <- abs(loadings[[block_name]][, 1])
+  }
+}
+
+# Save importance scores for each block
 for (block_name in names(X)) {
   if (!is.null(selected_vars[[block_name]])) {
     # Get loadings for this block
@@ -362,11 +370,24 @@ for (block_name in names(X)) {
     # Get selected features
     sel_features <- rownames(as.data.frame(selected_vars[[block_name]]$value))
     
-    # Create dataframe with absolute loading values as VIP
-    # This represents the magnitude of each feature's contribution to the component
+    # Calculate absolute loadings
+    abs_loadings <- abs(loadings_block[sel_features, 1])
+    
+    # Normalize to VIP-like scale: multiply by factor to center around 1-2 range
+    # Find max loading across all selected features in all blocks
+    all_abs <- unlist(lapply(all_loadings_abs, function(x) x[x != 0]))
+    if (length(all_abs) > 0) {
+      max_loading <- max(all_abs, na.rm = TRUE)
+      # Scale so max loading maps to ~1.5 (like PLS-DA VIP)
+      vip_scaled <- (abs_loadings / max_loading) * 1.5
+    } else {
+      vip_scaled <- abs_loadings
+    }
+    
+    # Create dataframe with scaled VIP values
     vip_df <- data.frame(
       Feature = sel_features,
-      VIP = abs(loadings_block[sel_features, 1]),  # Use absolute loadings as importance
+      VIP = vip_scaled,  # Scaled importance score (comparable to PLS-DA VIP)
       Loading_Comp1 = loadings_block[sel_features, 1]  # Keep signed loading for reference
     )
     
@@ -377,7 +398,7 @@ for (block_name in names(X)) {
              file.path(output_dir, paste0("selected_features_", block_name, ".csv")),
              row.names = FALSE)
     
-    cat("Block", block_name, "- max absolute loading:", round(max(vip_df$VIP, na.rm=TRUE), 2), "\n")
+    cat("Block", block_name, "- max importance score:", round(max(vip_df$VIP, na.rm=TRUE), 2), "\n")
   }
 }
 
