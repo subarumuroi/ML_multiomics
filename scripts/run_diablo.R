@@ -376,8 +376,9 @@ for (block_name in names(X)) {
       Percentile = NA  # Will be calculated next
     )
     
-    # Calculate percentile rank (100 = highest, 0 = lowest in this block)
-    vip_df$Percentile <- (rank(-vip_df$Loading) - 1) / (nrow(vip_df) - 1) * 100
+    # Calculate percentile rank (100 = highest importance, 0 = lowest in this block)
+    # Use rank() directly (not rank(-)) so higher loadings get higher percentiles
+    vip_df$Percentile <- (rank(vip_df$Loading) - 1) / (nrow(vip_df) - 1) * 100
     
     # Sort by loading magnitude descending
     vip_df <- vip_df[order(-vip_df$Loading), ]
