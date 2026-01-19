@@ -31,21 +31,22 @@ A comprehensive Python framework for analyzing and integrating multi-omics datas
 
 #### Multi-Omics Integration (DIABLO)
 - **Loadings**: DIABLO produces normalized loadings on [-1, 1] scale
-- **Scaling Approach**: Raw loadings are scaled to VIP-equivalent scale by:
-  1. Computing absolute value of loadings: |loading|
-  2. Finding maximum absolute loading across selected features
-  3. Normalizing: VIP_scaled = (|loading| / max_loading) × 1.5
-  4. This scales top features to ~1.5 range, comparable to PLS-DA VIP
-- **Threshold**: Features with scaled VIP > 1.0 are flagged as important
-- **Scientific Rationale**: DIABLO natively supports only component loadings (no VIP function). Scaling normalizes them to be directly comparable with single-omics PLS-DA results across all omics layers.
+- **Importance Metric**: Features ranked by percentile (0-100) based on absolute loading magnitude
+- **Importance Threshold**: Features in top 50% percentile (Percentile ≥ 50) flagged as important
+- **Scientific Rationale**: Per Rohart et al. (2017) mixOmics methodology:
+  - DIABLO doesn't support VIP scores (only PLS/SPLSDA have vip() function)
+  - Uses raw absolute loadings on native scale, ranked by percentile within each block
+  - Percentile-based importance is more robust than arbitrary thresholds
+  - Loadings naturally range 0-1; percentile ranking enables fair comparison across blocks
 
 ### DIABLO Integration
 - **R/mixOmics**: Direct integration with mixOmics package for statistical rigor
-- **Visualization**: Publication-quality plots generated in R:
-  - `plotDiablo()`: Sample scores with block overlay
-  - `plotIndiv()`: Individual scores with confidence ellipses
-  - `plotLoadings()`: Loading weights across blocks
-  - `circosPlot()`: Feature correlations and block agreement
+- **Visualization**: Publication-quality plots generated in R/mixOmics:
+  - `plotDiablo()`: Sample scores overlaid on all block coordinates
+  - `plotIndiv()`: Individual sample scores with confidence ellipses per block
+  - `plotLoadings()`: Feature loading weights (importance) per block
+  - `circosPlot()`: Feature correlations across blocks with correlation strength indicators
+  - `plotArrow()`: Block agreement visualization (requires ≥10 samples; skipped for small cohorts)
 - **Block Correlation**: Measures how well different omics blocks agree on sample discrimination
 
 ## Installation
@@ -358,26 +359,40 @@ This framework implements methods from:
 
 ## Recent Implementation Notes (January 2026)
 
-### Bug Fixes & Improvements
+### Scientific Methodology Corrections
 
-**VIP Score Calculation (Commit fe5860e, 3221101)**
-- Fixed: DIABLO VIP calculation was using `selectVar()` output directly
-- Issue: These are component loadings ([-1, 1] scale), not true VIP scores
-- Solution: Implemented normalization to scale DIABLO importance scores to VIP-equivalent range
-- Result: DIABLO features now properly comparable to single-omics PLS-DA results with VIP > 1 threshold
+**Proper DIABLO Importance Calculation (Commits 904b5c7, e708e99)**
+- **Previous Error**: Scaled DIABLO loadings to [0, 1.5] range to match VIP > 1 threshold
+- **Issue**: This was data-fitting; not aligned with official mixOmics protocol
+- **Correct Method** (per Rohart et al. 2017):
+  - Use raw absolute loadings on native scale (0-1 range)
+  - Flag importance by percentile rank within each block (0-100 scale)
+  - Top 50% (Percentile ≥ 50) marked as important
+  - Do NOT apply arbitrary VIP > 1 threshold (PLS-DA specific)
+- **Result**: DIABLO methodology now scientifically rigorous and reproducible
+
+**DIABLO Visualization Improvements (Commit e708e99)**
+- **circosPlot()**: Updated with proper mixOmics parameters:
+  - cutoff = 0.7 (higher threshold for clearer feature correlations)
+  - line = TRUE (connects correlated features across blocks)
+  - Distinct block colors and correlation line colors
+  - size.labels = 1.5 for publication quality
+- **plotArrow()**: Added intelligent sample size checking:
+  - Requires ≥10 samples for meaningful visualization
+  - Automatically skipped for small cohorts (n < 10)
+  - Documentation explains purpose: shows centroid (tail) vs block-specific positions (tips)
+
+### Bug Fixes & Prior Improvements
 
 **Data Format Handling (Commit 698c6a6)**
 - Fixed: R interface now handles both pandas DataFrame and numpy array inputs
-- Issue: DIABLO requires proper DataFrame conversion for R's mixOmics
 - Solution: Added type checking and automatic conversion in `r_interface.py`
 
 **R Visualization Integration (Commit 698c6a6)**
 - Implemented: Direct R/mixOmics visualization generation
-- Changed: From matplotlib approximations to native R publication plots
-- Output: Real statistical visualizations (plotDiablo, plotIndiv, plotLoadings, circosPlot)
+- Output: Publication-quality plots (plotDiablo, plotIndiv, plotLoadings, circosPlot)
 - Location: `results/multi_omics/diablo_output_[timestamp]/diablo_output/publication_plots/`
 
 **Code Cleanup (Commit 71b22c4)**
-- Removed: Obsolete matplotlib visualization wrapper methods
-- Removed: Old R visualization placeholder scripts
-- Kept: Active matplotlib methods for quick local visualization alongside R plots
+- Removed: Obsolete matplotlib visualization approximations
+- Kept: Active R visualization generation for publication-ready output
