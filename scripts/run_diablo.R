@@ -581,7 +581,7 @@ cat("Generating circosPlot...\n")
 tryCatch({
   png(file.path(plots_dir, "06_DIABLO_circos.png"), width = 900, height = 900, res = 100)
   circosPlot(final_model,
-            cutoff = 0.7,
+            cutoff = 0.95,
             line = TRUE,
             color.blocks = c('darkorchid', 'brown1', 'lightgreen', 'steelblue'),
             color.cor = c('chocolate3', 'grey20'),

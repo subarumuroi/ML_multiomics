@@ -196,4 +196,3 @@ results/
 
 ---
 
-**Ready to write your report. Good luck!** 🎉
