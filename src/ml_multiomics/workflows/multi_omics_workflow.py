@@ -399,10 +399,7 @@ class MultiOmicsWorkflow:
         # Step 3: Run DIABLO
         self.run_diablo(multi_block, n_components=n_components, plot=True)
         
-        # Step 4: Run MOFA+
-        #self.run_mofa_integration(n_factors=10)
-
-        # Step 5: Run concatenation baseline
+        # Step 4: Run concatenation baseline
         self.run_concatenation_baseline(multi_block, cv=True)
     
         # Step 6: Compare methods
@@ -432,23 +429,6 @@ class MultiOmicsWorkflow:
             if key in self.results:
                 self.results[key].to_csv(
                     f"{output_dir}/{key}.csv", index=False)
-        
-        # Save MOFA results 
-        if hasattr(self, 'mofa_model'):
-            mofa_dir = f"{output_dir}/mofa"
-            os.makedirs(mofa_dir, exist_ok=True)
-            self.mofa_model.save_results(mofa_dir)
-            
-            # Save MOFA plots
-            fig_var = self.mofa_model.plot_variance_explained()
-            fig_var.savefig(f"{mofa_dir}/variance_explained.png", 
-                        dpi=300, bbox_inches='tight')
-            plt.close(fig_var)
-            
-            fig_scores = self.mofa_model.plot_factor_scores(1, 2)
-            fig_scores.savefig(f"{mofa_dir}/factor_scores.png", 
-                            dpi=300, bbox_inches='tight')
-            plt.close(fig_scores)
 
         # Save figures
         for key, value in self.results.items():
