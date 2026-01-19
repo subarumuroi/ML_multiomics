@@ -546,31 +546,46 @@ tryCatch({
 })
 
 # 5. Arrow Plot
+# Per mixOmics documentation: visualizes agreement between blocks by showing:
+#  - Arrow tail = centroid of all blocks for a sample
+#  - Arrow tips = individual block positions for that sample
+# Short arrows indicate high agreement, long arrows indicate disagreement
+# NOTE: Requires sufficient samples (~15+) for meaningful visualization
+#       (mixOmics example sliced 150 samples to ~15; sparse with fewer)
 cat("Generating plotArrow...\n")
-tryCatch({
-  png(file.path(plots_dir, "05_DIABLO_arrow.png"), width = 900, height = 800, res = 100)
-  plotArrow(final_model,
-           comp = c(1, 2),
-           legend = TRUE,
-           legend.position = 'right',
-           title = 'DIABLO Arrow Plot - Block Agreement',
-           size.xlabel = 13,
-           size.ylabel = 13)
-  dev.off()
-  cat("  ✓ Saved: 05_DIABLO_arrow.png\n")
-}, error = function(e) {
-  cat("  ✗ plotArrow failed:", e$message, "\n")
-})
+
+n_samples <- nrow(final_model$X[[1]])
+if (n_samples < 10) {
+  cat("  ⊘ Skipped plotArrow: Requires ≥10 samples for meaningful visualization\n")
+  cat("    (Current: ", n_samples, " samples → arrow plot too sparse)\n")
+  cat("    → Use plotIndiv() and plotDiablo() for sample visualization instead\n")
+} else {
+  tryCatch({
+    png(file.path(plots_dir, "05_DIABLO_arrow.png"), width = 900, height = 800, res = 100)
+    plotArrow(final_model, 
+             ind.names = FALSE, 
+             legend = TRUE,
+             title = 'DIABLO Arrow Plot - Block Agreement')
+    dev.off()
+    cat("  ✓ Saved: 05_DIABLO_arrow.png\n")
+  }, error = function(e) {
+    tryCatch(dev.off(), error = function(e2) {})
+    cat("  ✗ plotArrow failed:", e$message, "\n")
+  })
+}
 
 # 6. Circos Plot
+# Shows correlations between selected features across blocks
+# line = TRUE connects features with lines to show positive correlations
 cat("Generating circosPlot...\n")
 tryCatch({
   png(file.path(plots_dir, "06_DIABLO_circos.png"), width = 900, height = 900, res = 100)
   circosPlot(final_model,
-            cutoff = 0.5,
-            ncol.legend = 2,
-            size.legend = 1)
-  title('DIABLO Circos Plot - Feature Correlations', cex.main = 1.5)
+            cutoff = 0.7,
+            line = TRUE,
+            color.blocks = c('darkorchid', 'brown1', 'lightgreen', 'steelblue'),
+            color.cor = c('chocolate3', 'grey20'),
+            size.labels = 1.5)
   dev.off()
   cat("  ✓ Saved: 06_DIABLO_circos.png\n")
 }, error = function(e) {
