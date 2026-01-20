@@ -18,16 +18,16 @@ CENTRAL_CARBON
   Top feature: 33_LAC_0.0 : Conc. (nM) (VIP = 1.75)
 
 AROMATICS
-  PCA: First 2 components explain 96.9% variance
+  PCA: First 2 components explain 91.9% variance
   PLS-DA (Leave-One-Out): 100.00% accuracy
-  Important features (VIP > 1): 27
+  Important features (VIP > 1): 28
   Top feature: 2-Ethylfuran Area (VIP = 2.69)
 
 PROTEOMICS
-  PCA: First 2 components explain 59.9% variance
+  PCA: First 2 components explain 56.5% variance
   PLS-DA (Leave-One-Out): 100.00% accuracy
-  Important features (VIP > 1): 1788
-  Top feature: A0A804J0F0 (VIP = 3.62)
+  Important features (VIP > 1): 1828
+  Top feature: A0A4V4H2Z4;A0A4V4H2Z4 (VIP = 2.85)
 
 
 MULTI-OMICS INTEGRATION RESULTS
@@ -35,10 +35,10 @@ MULTI-OMICS INTEGRATION RESULTS
 
 DIABLO Block Correlations:
                 amino_acids  central_carbon  aromatics  proteomics
-amino_acids        1.000000        0.945556   0.333136    0.984801
-central_carbon     0.945556        1.000000   0.309628    0.958499
-aromatics          0.333136        0.309628   1.000000    0.463680
-proteomics         0.984801        0.958499   0.463680    1.000000
+amino_acids        1.000000        0.936661   0.455860    0.976957
+central_carbon     0.936661        1.000000   0.436366    0.929692
+aromatics          0.455860        0.436366   1.000000    0.608708
+proteomics         0.976957        0.929692   0.608708    1.000000
 
 Concatenation Baseline (Leave-One-Out):
   Accuracy: 100.00% ± 0.00%
@@ -46,21 +46,21 @@ Concatenation Baseline (Leave-One-Out):
 Top Features Across All Omics:
 
   amino_acids:
-    - VAL (VIP = 0.72)
-    - ASP (VIP = 0.69)
-    - GLU (VIP = 0.06)
+    - ASP (VIP = 0.79)
+    - VAL (VIP = 0.55)
+    - GLN (VIP = 0.25)
 
   central_carbon:
-    - 48_SUCC_0.0 : Conc. (nM) (VIP = 0.80)
-    - 13_ATP_0.0 : Conc. (nM) (VIP = 0.51)
-    - 21_FUM_0.0 : Conc. (nM) (VIP = 0.31)
+    - 48_SUCC_0.0 : Conc. (nM) (VIP = 0.73)
+    - 21_FUM_0.0 : Conc. (nM) (VIP = 0.48)
+    - 13_ATP_0.0 : Conc. (nM) (VIP = 0.48)
 
   aromatics:
-    - 3-Methyl-2-buten-1-ol Area (VIP = 0.83)
-    - Benzaldehyde Area (VIP = 0.38)
-    - (Z)-beta-Ocimene Area (VIP = 0.30)
+    - Ethyl valerate Area (VIP = 0.64)
+    - 2-Pentanone Area (VIP = 0.61)
+    - Tetradecanal Area (VIP = 0.44)
 
   proteomics:
-    - A0A4S8J5V9;A0A4S8J5V9 (VIP = 0.65)
-    - A0A4S8JJ79;A0A4S8JJ79;A0A804JTL2;A0A804JTL3 (VIP = 0.47)
-    - A0A804IBQ9;A0A804IBR0 (VIP = 0.41)
+    - A0A804IBQ9;A0A804IBR0 (VIP = 0.62)
+    - A0A4S8JJ79;A0A4S8JJ79;A0A804JTL2;A0A804JTL3 (VIP = 0.48)
+    - A0A4S8K7A7;A0A4S8K7A7 (VIP = 0.38)

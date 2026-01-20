@@ -36,44 +36,20 @@ class MetabolomicsPreprocessor(BasePreprocessor):
     
     def handle_missing(self, df: pd.DataFrame, group_col: str) -> pd.DataFrame:
         """
-        Handle missing values using group-wise median imputation.
-        
-        Strategy:
-        1. Impute with group median (within Green/Ripe/Overripe)
-        2. Fill remaining NaNs with fill_value (assumed absent)
-        
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Data with missing values
-        group_col : str
-            Column containing group labels
-            
-        Returns
-        -------
-        pd.DataFrame
-            Imputed dataframe
+        Drop columns (except group_col) that are all-NaN, then fill remaining missing numeric values with fill_value (default 0).
+        No group-wise imputation is performed. This treats missing as undetected/absent.
         """
         df = df.copy()
         feature_cols = [c for c in df.columns if c != group_col]
+        # Drop columns that are all-NaN
+        all_nan_cols = [c for c in feature_cols if df[c].isna().all()]
+        if all_nan_cols:
+            df = df.drop(columns=all_nan_cols)
+        # Fill remaining missing values in numeric columns
+        feature_cols = [c for c in df.columns if c != group_col]
         numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
-        
-        # Group-wise median imputation
-        def impute_group(group):
-            group = group.copy()
-            for col in numeric_cols:
-                if group[col].isna().any():
-                    median_val = group[col].median()
-                    if not pd.isna(median_val):
-                        group[col] = group[col].fillna(median_val)
-            return group
-        
-        df = df.groupby(group_col, group_keys=False).apply(impute_group)
-        
-        # Fill remaining NaNs
         fill_value = self.config.get('fill_value', 0)
         df[numeric_cols] = df[numeric_cols].fillna(fill_value)
-        
         return df
     
     def apply_transformation(self, X: np.ndarray) -> np.ndarray:
@@ -126,33 +102,18 @@ class VolatilesPreprocessor(BasePreprocessor):
     
     def handle_missing(self, df: pd.DataFrame, group_col: str) -> pd.DataFrame:
         """
-        Handle missing values in volatile data.
-        
-        Volatiles are often truly absent (below detection limit),
-        so we're more conservative with imputation.
+        Drop columns (except group_col) that are all-NaN, then fill remaining missing numeric values with fill_value (default 0).
+        No group-wise imputation is performed. This treats missing as undetected/absent.
         """
         df = df.copy()
         feature_cols = [c for c in df.columns if c != group_col]
+        all_nan_cols = [c for c in feature_cols if df[c].isna().all()]
+        if all_nan_cols:
+            df = df.drop(columns=all_nan_cols)
+        feature_cols = [c for c in df.columns if c != group_col]
         numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
-        
-        # Group-wise median imputation (more conservative)
-        def impute_group(group):
-            group = group.copy()
-            for col in numeric_cols:
-                if group[col].isna().any() and group[col].notna().sum() >= len(group) * 0.5:
-                    # Only impute if at least 50% of group has values
-                    median_val = group[col].median()
-                    if not pd.isna(median_val):
-                        group[col] = group[col].fillna(median_val)
-
-            return group
-        
-        df = df.groupby(group_col, group_keys=False).apply(impute_group)
-        
-        # Fill remaining with 0 (absent)
         fill_value = self.config.get('fill_value', 0)
         df[numeric_cols] = df[numeric_cols].fillna(fill_value)
-        
         return df
 
 
@@ -173,7 +134,7 @@ class ProteomicsPreprocessor(BasePreprocessor):
         """Default configuration for proteomics."""
         return {
             'drop_threshold': 0.3,        # Stricter for proteomics
-            'fill_value': None,            # Don't fill - data is pre-imputed
+            'fill_value': 0,            # Should be imputed, but 0 for missing values
             'transform': 'log2',           # Log2 is standard for proteomics
             'scaling': 'pareto',         # changed from standard to pareto for DIABLO consistency
             'handle_negatives': False,     # Shouldn't have negatives
@@ -181,39 +142,19 @@ class ProteomicsPreprocessor(BasePreprocessor):
     
     def handle_missing(self, df: pd.DataFrame, group_col: str) -> pd.DataFrame:
         """
-        Handle missing values in proteomics data.
-        
-        For imputed proteomics data, we assume missing values are minimal.
-        Uses group-wise median imputation like other omics types.
+        Drop columns (except group_col) that are all-NaN, then impute remaining missing numeric values with the column median.
         """
         df = df.copy()
         feature_cols = [c for c in df.columns if c != group_col]
+        # Drop columns that are all-NaN
+        all_nan_cols = [c for c in feature_cols if df[c].isna().all()]
+        if all_nan_cols:
+            df = df.drop(columns=all_nan_cols)
+        feature_cols = [c for c in df.columns if c != group_col]
         numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
-        
-        n_missing = df[numeric_cols].isna().sum().sum()
-        
-        if n_missing > 0:
-            self._log(f"Warning: Found {n_missing} missing values in imputed proteomics data")
-            
-            # Group-wise median imputation (same as other omics)
-            def impute_group(group):
-                group = group.copy()
-                for col in numeric_cols:
-                    if group[col].isna().any():
-                        median_val = group[col].median()
-                        if not pd.isna(median_val):
-                            group[col] = group[col].fillna(median_val)
-                return group
-            
-            df = df.groupby(group_col, group_keys=False).apply(impute_group)
-            
-            # Fill any remaining NaNs (fallback)
-            fill_value = self.config.get('fill_value')
-            if fill_value is not None:
-                df[numeric_cols] = df[numeric_cols].fillna(fill_value)
-            else:
-                # Use global median for any remaining NaNs
-                global_median = df[numeric_cols].median()
-                df[numeric_cols] = df[numeric_cols].fillna(global_median)
-        
+        # Median imputation for numeric columns with missing values
+        for col in numeric_cols:
+            if df[col].isna().any():
+                median = df[col].median()
+                df[col] = df[col].fillna(median)
         return df

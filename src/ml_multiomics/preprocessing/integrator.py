@@ -34,24 +34,11 @@ class OmicsIntegrator:
                   feature_names: List[str],
                   sample_ids: Optional[List[str]] = None):
         """
-        Add an omics layer.
-        
-        Parameters
-        ----------
-        name : str
-            Name of omics layer (e.g., 'metabolomics', 'proteomics')
-        X : np.ndarray
-            Preprocessed feature matrix (n_samples × n_features)
-        y : np.ndarray
-            Group labels
-        feature_names : list
-            Feature names
-        sample_ids : list, optional
-            Sample identifiers for matching across layers
+        Add an omics layer. Explicit sample_ids are required for robust alignment.
+        Raises ValueError if sample_ids is not provided.
         """
         if sample_ids is None:
-            sample_ids = [f"{name}_sample_{i}" for i in range(len(X))]
-        
+            raise ValueError(f"Explicit sample_ids must be provided for layer '{name}'. Auto-generated IDs are not allowed.")
         self.layers[name] = {
             'X': X,
             'y': y,
@@ -60,7 +47,6 @@ class OmicsIntegrator:
             'n_samples': X.shape[0],
             'n_features': X.shape[1]
         }
-        
         print(f"Added layer '{name}': {X.shape[0]} samples × {X.shape[1]} features")
     
     def find_common_samples(self) -> List[str]:
