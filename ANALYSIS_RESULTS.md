@@ -196,3 +196,6 @@ results/
 
 ---
 
+Ensure that scaling (auto) is done per feature (proteomics but also for everything)
+
+Check the correlation calculation for DIABLO blocks
