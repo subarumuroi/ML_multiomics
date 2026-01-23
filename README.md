@@ -16,6 +16,8 @@ A comprehensive Python framework for analyzing and integrating multi-omics datas
 
 ### Validation & Utilities
 - **Cross-validation**: Leave-One-Out CV built into all methods
+- **Permutation testing**: Statistical validation that performance > random chance
+- **Consensus feature identification**: Venn diagram showing features important across all 3 methods
 - **Method comparison**: Automated performance comparison across integration approaches
 - **Overview visualizations**: Sample distribution and method comparison plots
 - **Publication-quality plots**: Comprehensive visualization suite using R/mixomics
@@ -286,6 +288,8 @@ results/multi_omics/
 ├── concatenation_importance.csv    # Concatenation feature importance
 ├── ensemble_importance_*.csv       # Per-block ensemble importance
 ├── method_comparison.csv           # 3-method performance comparison
+├── permutation_tests.csv           # Permutation test p-values (if run)
+├── permutation_test_report.txt     # Detailed interpretation (if run)
 └── diablo_output_[timestamp]/      # DIABLO R output
     └── diablo_output/
         └── publication_plots/      # R/mixomics publication plots
@@ -299,6 +303,59 @@ results/overview/
 ├── method_comparison.png           # Bar chart comparing methods
 └── single_omics_performance.png    # Single-omics PLS-DA comparison
 ```
+
+## Statistical Validation: Permutation Testing
+
+For small sample sizes (n<30), cross-validation alone may not detect overfitting. Permutation testing provides additional validation by testing whether model performance is significantly better than chance.
+
+### Quick Start
+
+Add permutation testing to your analysis:
+
+```python
+# After running integration
+multi_block = workflow.integrator.get_multi_block()
+perm_results = workflow.run_permutation_tests(
+    multi_block=multi_block,
+    n_permutations=1000,  # 1000 for POC, 5000+ for publication
+    random_state=42
+)
+
+# Results automatically saved with other outputs
+workflow.save_results("results/multi_omics")
+```
+
+Or use the standalone script:
+
+```bash
+# Quick validation (1000 permutations)
+python examples/add_permutation_tests.py
+
+# Publication quality (5000 permutations)
+python examples/add_permutation_tests.py --n-permutations 5000
+```
+
+### Understanding Results
+
+- **P-value < 0.05**: Model significantly better than random ✓
+- **P-value ≥ 0.05**: Cannot distinguish from random chance ✗
+- **With n<15**: Results are exploratory/POC only ⚠️
+
+See [OUTPUT_GUIDE.md](OUTPUT_GUIDE.md#permutation-testing-optional) for detailed interpretation.
+
+### Consensus Features & Venn Diagram
+
+Identify features that are consistently important across all three integration methods:
+
+```python
+# Automatically included in run_full_integration(), or run separately:
+feature_sets = workflow.identify_consensus_features(top_n=20, plot=True)
+
+# Returns: {'concatenation': set, 'ensemble': set, 'diablo': set, 'consensus': set}
+# Saves: feature_venn.png and consensus_features.csv
+```
+
+The Venn diagram visually shows overlap between methods, helping identify robust biomarker candidates that are consistently selected regardless of integration approach.
 
 ## Advanced Usage
 

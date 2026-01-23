@@ -22,6 +22,8 @@ results/
 │
 ├── multi_omics/                     # Multi-omics integration results
 │   ├── method_comparison.csv       ⭐ KEY: Compare 3 integration methods
+│   ├── permutation_tests.csv       ⭐ NEW: Statistical validation (if run)
+│   ├── consensus_features.csv      ⭐ NEW: Features consistent across all 3 methods
 │   ├── diablo_vips.csv            # DIABLO feature importance
 │   ├── diablo_correlations.csv    # Block-to-block correlations
 │   ├── concatenation_importance.csv
@@ -29,6 +31,7 @@ results/
 │   ├── ensemble_importance_central_carbon.csv
 │   ├── ensemble_importance_aromatics.csv
 │   ├── ensemble_importance_proteomics.csv
+│   ├── feature_venn.png           ⭐ NEW: Venn diagram of feature overlap
 │   ├── diablo_samples.png         # Sample projections
 │   ├── diablo_correlations.png    # Block correlation heatmap
 │   ├── diablo_arrow.png           # Arrow plot
@@ -129,3 +132,34 @@ Four plots:
 - High accuracy (>90%) is expected with small n - results are exploratory
 - Focus on feature importance and biological interpretation
 - Validate findings in independent cohort when possible
+### Permutation Testing (Optional)
+
+Permutation testing validates that model performance is significantly better than random chance. This is particularly important with small sample sizes.
+
+**To run permutation tests:**
+```python
+# After running integration
+multi_block = workflow.integrator.get_multi_block()
+perm_results = workflow.run_permutation_tests(multi_block, n_permutations=1000)
+workflow.save_results("results/multi_omics")
+```
+
+Or use the standalone example:
+```bash
+python examples/add_permutation_tests.py
+```
+
+**Output file:** `results/multi_omics/permutation_tests.csv`
+
+**Interpretation:**
+- P-value < 0.05: Performance significantly better than chance ✓
+- P-value ≥ 0.05: Cannot distinguish from random ✗
+- With n<15: Results are exploratory only ⚠️
+
+### Consensus Features
+
+The Venn diagram (`feature_venn.png`) shows which features are consistently identified as important across all three integration methods. Features that appear in all three methods are particularly robust biomarker candidates.
+
+**Output files:**
+- `feature_venn.png` - Visual Venn diagram
+- `consensus_features.csv` - List of features in all 3 methods
