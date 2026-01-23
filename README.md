@@ -10,14 +10,14 @@ A comprehensive Python framework for analyzing and integrating multi-omics datas
 - **Omics-specific preprocessing**: Tailored pipelines for metabolomics, proteomics, and volatiles
 
 ### Multi-Omics Integration
-- **DIABLO**: Multi-block integration maximizing correlation between omics layers
-- **Concatenation baseline**: Simple concatenation approach for comparison
-- **Weighted integration**: Balance contributions from different omics layers
+- **DIABLO**: Multi-block integration maximizing correlation between omics layers (with LOO CV tuning)
+- **Concatenation baseline**: Simple early-fusion approach for comparison
+- **Block-wise Ensemble**: Late-fusion ensemble with independent block classifiers
 
 ### Validation & Utilities
-- **Cross-validation**: Leave-One-Out and K-Fold strategies
-- **Permutation testing**: Statistical validation
-- **Feature stability**: Assess robustness of feature selection
+- **Cross-validation**: Leave-One-Out CV built into all methods
+- **Method comparison**: Automated performance comparison across integration approaches
+- **Overview visualizations**: Sample distribution and method comparison plots
 - **Publication-quality plots**: Comprehensive visualization suite using R/mixomics
 
 ## Scientific Methods & Implementation
@@ -106,8 +106,7 @@ ml_multiomics/
 │       │   │
 │       │   └── multi_omics/
 │       │       ├── diablo.py
-│       │       ├── concatenation_baseline.py
-│       │       └── __init__.py
+│       │       ├── concatenation_baseline.py│       │       ├── ensemble.py│       │       └── __init__.py
 │       │
 │       ├── workflows/
 │       │   ├── single_omics_workflow.py
@@ -244,19 +243,19 @@ workflow = SingleOmicsWorkflow(
 
 **Metabolomics:**
 - Drop threshold: 50%
-- Imputation: Group-wise median
+- Imputation: Zero-fill (biological interpretation: below detection limit)
 - Transform: Log
 - Scaling: Pareto
 
 **Volatiles:**
 - Drop threshold: 60% (more lenient for sparse data)
-- Imputation: Conservative group-wise median
+- Imputation: Zero-fill (biological interpretation: below detection limit)
 - Transform: Log
 - Scaling: Pareto
 
 **Proteomics:**
 - Drop threshold: 30% (stricter)
-- Imputation: Group-wise median
+- Imputation: Group-wise median (avoids data leakage between groups)
 - Transform: Log2
 - Scaling: Pareto
 
@@ -284,51 +283,64 @@ results/amino_acids/
 results/multi_omics/
 ├── diablo_correlations.csv         # Block correlations
 ├── diablo_vips.csv                 # Important features per block
-├── diablo_samples.png              # Sample projection
-├── diablo_correlations.png         # Correlation heatmap
-├── diablo_arrow.png                # Block agreement plot
-├── diablo_circos.png               # Circos-style plot
-├── concatenation_importance.csv    # Feature importance
-└── method_comparison.csv           # Performance comparison
+├── concatenation_importance.csv    # Concatenation feature importance
+├── ensemble_importance_*.csv       # Per-block ensemble importance
+├── method_comparison.csv           # 3-method performance comparison
+└── diablo_output_[timestamp]/      # DIABLO R output
+    └── diablo_output/
+        └── publication_plots/      # R/mixomics publication plots
+            ├── 01_DIABLO_samples.png
+            ├── 02_DIABLO_indiv.png
+            ├── 04_DIABLO_loadings.png
+            └── 06_DIABLO_circos.png
+
+results/overview/
+├── sample_distribution.png         # Sample counts per omics layer
+├── method_comparison.png           # Bar chart comparing methods
+└── single_omics_performance.png    # Single-omics PLS-DA comparison
 ```
 
 ## Advanced Usage
 
-### Custom Validation
+### Comparing Integration Methods
 
 ```python
-from ml_multiomics.utils import CrossValidator, PermutationTest
+from ml_multiomics.workflows import MultiOmicsWorkflow
 
-# Leave-One-Out validation
-validator = CrossValidator(strategy='loo')
-cv_results = validator.validate_model(model, X, y)
+# Run all three integration methods with cross-validation
+workflow = MultiOmicsWorkflow()
 
-# Permutation test
-perm_test = PermutationTest(n_permutations=1000)
-test_results = perm_test.test_model(model, X, y)
-print(f"P-value: {test_results['p_value']:.4f}")
+# Preprocess and integrate data
+workflow.preprocess_all_layers(data_dict, omics_types, group_col='Groups')
+multi_block = workflow.integrator.create_multiblock_data(align=True)
+
+# Run DIABLO (includes LOO CV during tuning)
+workflow.run_diablo(multi_block, n_components=2)
+
+# Run concatenation baseline (with LOO CV)
+workflow.run_concatenation_baseline(multi_block, cv=True)
+
+# Run block-wise ensemble (with LOO CV)
+workflow.run_ensemble(multi_block, cv=True)
+
+# Compare methods
+comparison_df = workflow.compare_methods()
+print(comparison_df)
 ```
 
-### Custom Visualizations
+### Overview Visualizations
 
 ```python
 from ml_multiomics.utils import OmicsPlotter
 
 plotter = OmicsPlotter()
 
-# Confidence ellipses
-fig, ax = plotter.plot_confidence_ellipses(
-    X=scores, y=labels, 
-    comp_x=0, comp_y=1, 
-    confidence=0.95
-)
+# Sample distribution across omics layers
+data_dict = {name: pd.read_csv(path) for name, path in data_paths.items()}
+fig, _ = plotter.plot_sample_overview(data_dict, group_col='Groups')
 
-# Volcano plot
-fig, ax = plotter.plot_volcano(
-    fold_changes=fc, 
-    p_values=pvals,
-    feature_names=names
-)
+# Performance comparison
+fig, _ = plotter.plot_performance_comparison(performance_dict, metric='accuracy')
 ```
 
 ## Citation

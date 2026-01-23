@@ -161,9 +161,19 @@ if (n_samples < 15) {
     
     optimal_keepX <- tune_result$choice.keepX
     
+    # Extract tuning CV error rates
+    tuning_cv_error <- tryCatch({
+      tune_result$error.rate[optimal_ncomp]
+    }, error = function(e) {
+      NA
+    })
+    
     cat("\nOptimal number of components:", optimal_ncomp, "\n")
     cat("Optimal features per block:\n")
     print(optimal_keepX)
+    if (!is.na(tuning_cv_error)) {
+      cat("Tuning CV error rate:", tuning_cv_error, "\n")
+    }
     
   } else {
     # Fallback defaults
@@ -171,8 +181,14 @@ if (n_samples < 15) {
     optimal_keepX <- lapply(X, function(block) {
       rep(min(15, ncol(block)), 2)
     })
+    tuning_cv_error <- NA
     cat("\nUsing default parameters\n")
   }
+}
+
+# For small n, we didn't run tuning, so set tuning_cv_error to NA
+if (n_samples < 15) {
+  tuning_cv_error <- NA
 }
 
 # Final safety check
@@ -454,7 +470,18 @@ model_summary <- list(
   performance = list(
     overall_error_comp1 = perf_result$error.rate$overall["Overall.ER", "centroids.dist", 1],
     overall_error_comp2 = if(optimal_ncomp >= 2) perf_result$error.rate$overall["Overall.ER", "centroids.dist", 2] else NA
-  )
+  ),
+  tuning = if(exists("tuning_cv_error") && !is.na(tuning_cv_error)) {
+    list(
+      cv_error_rate = tuning_cv_error,
+      method = "LOO"
+    )
+  } else {
+    list(
+      cv_error_rate = NA,
+      method = "Default (no tuning for n<15)"
+    )
+  }
 )
 
 write_json(model_summary, 

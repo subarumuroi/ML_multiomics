@@ -25,6 +25,7 @@ class OmicsIntegrator:
         """Initialize integrator."""
         self.layers = {}
         self.common_samples = None
+        self.alignment_method = None  # 'name_based' or 'position_based'
         self.layer_info = {}
         
     def add_layer(self, 
@@ -53,6 +54,10 @@ class OmicsIntegrator:
         """
         Find samples present in all layers.
         
+        Uses two strategies:
+        1. Name-based: Match by sample IDs (requires consistent naming)
+        2. Position-based: Match by position within each group (fallback for inconsistent naming)
+        
         Returns
         -------
         list
@@ -61,24 +66,79 @@ class OmicsIntegrator:
         if len(self.layers) == 0:
             raise ValueError("No layers added yet")
         
-        # Get intersection of all sample IDs
+        # Strategy 1: Try name-based alignment
         all_sample_sets = [set(layer['sample_ids']) for layer in self.layers.values()]
         common = set.intersection(*all_sample_sets)
         
-        self.common_samples = sorted(list(common))
-        
-        print(f"\nFound {len(self.common_samples)} common samples across {len(self.layers)} layers")
-        
-        for layer_name, layer_data in self.layers.items():
-            n_unique = len(set(layer_data['sample_ids']) - common)
-            if n_unique > 0:
-                print(f"  - {layer_name}: {n_unique} unique samples will be excluded")
+        if len(common) > 0:
+            # Name-based alignment successful
+            self.common_samples = sorted(list(common))
+            self.alignment_method = 'name_based'
+            
+            print(f"\n[Name-based alignment] Found {len(self.common_samples)} common samples across {len(self.layers)} layers")
+            
+            for layer_name, layer_data in self.layers.items():
+                n_unique = len(set(layer_data['sample_ids']) - common)
+                if n_unique > 0:
+                    print(f"  - {layer_name}: {n_unique} unique samples will be excluded")
+        else:
+            # Strategy 2: Position-based alignment within groups
+            print("\n[Name-based alignment failed - no common sample IDs]")
+            print("[Falling back to position-based alignment within groups]")
+            
+            self.alignment_method = 'position_based'
+            self.common_samples = self._align_by_position()
+            
+            print(f"\nAligned {len(self.common_samples)} samples by position within groups")
         
         return self.common_samples
+    
+    def _align_by_position(self) -> List[str]:
+        """
+        Align samples by their position within each group.
+        
+        Assumes samples at the same position within the same group across
+        different omics layers are the same biological sample.
+        
+        Returns
+        -------
+        list
+            Synthetic sample IDs (e.g., 'Green_1', 'Green_2', ...)
+        """
+        # Get groups from first layer (all layers should have same group structure)
+        first_layer = list(self.layers.values())[0]
+        unique_groups = np.unique(first_layer['y'])
+        
+        # For each group, find minimum sample count across layers
+        group_sample_counts = {group: [] for group in unique_groups}
+        
+        for layer in self.layers.values():
+            for group in unique_groups:
+                group_mask = layer['y'] == group
+                n_samples_in_group = group_mask.sum()
+                group_sample_counts[group].append(n_samples_in_group)
+        
+        # Generate synthetic aligned sample IDs
+        aligned_sample_ids = []
+        for group in unique_groups:
+            min_count = min(group_sample_counts[group])
+            max_count = max(group_sample_counts[group])
+            
+            if min_count != max_count:
+                print(f"  Warning: Group '{group}' has varying sample counts across layers ({min_count}-{max_count})")
+                print(f"           Using first {min_count} samples from each layer")
+            
+            for i in range(min_count):
+                aligned_sample_ids.append(f"{group}_{i+1}")
+        
+        return aligned_sample_ids
     
     def align_layers(self) -> Dict[str, Dict]:
         """
         Align all layers to common samples.
+        
+        Uses either name-based or position-based alignment depending on
+        what find_common_samples() determined.
         
         Returns
         -------
@@ -90,20 +150,51 @@ class OmicsIntegrator:
         
         aligned_layers = {}
         
-        for name, layer in self.layers.items():
-            # Find indices of common samples in this layer
-            sample_to_idx = {sid: i for i, sid in enumerate(layer['sample_ids'])}
-            common_indices = [sample_to_idx[sid] for sid in self.common_samples]
-            
-            # Subset to common samples
-            aligned_layers[name] = {
-                'X': layer['X'][common_indices, :],
-                'y': layer['y'][common_indices],
-                'feature_names': layer['feature_names'],
-                'sample_ids': self.common_samples,
-                'n_samples': len(common_indices),
-                'n_features': layer['n_features']
-            }
+        if self.alignment_method == 'name_based':
+            # Name-based alignment: match by sample IDs
+            for name, layer in self.layers.items():
+                sample_to_idx = {sid: i for i, sid in enumerate(layer['sample_ids'])}
+                common_indices = [sample_to_idx[sid] for sid in self.common_samples]
+                
+                aligned_layers[name] = {
+                    'X': layer['X'][common_indices, :],
+                    'y': layer['y'][common_indices],
+                    'feature_names': layer['feature_names'],
+                    'sample_ids': self.common_samples,
+                    'n_samples': len(common_indices),
+                    'n_features': layer['n_features']
+                }
+        
+        else:  # position_based
+            # Position-based alignment: match by position within groups
+            for name, layer in self.layers.items():
+                aligned_indices = []
+                synthetic_ids = []
+                y_aligned = []
+                
+                for sample_id in self.common_samples:
+                    # Parse synthetic ID: "GroupName_N"
+                    group_name, position = sample_id.rsplit('_', 1)
+                    position = int(position) - 1  # Convert to 0-indexed
+                    
+                    # Find samples in this group
+                    group_mask = layer['y'] == group_name
+                    group_indices = np.where(group_mask)[0]
+                    
+                    if position < len(group_indices):
+                        idx = group_indices[position]
+                        aligned_indices.append(idx)
+                        synthetic_ids.append(sample_id)
+                        y_aligned.append(layer['y'][idx])
+                
+                aligned_layers[name] = {
+                    'X': layer['X'][aligned_indices, :],
+                    'y': np.array(y_aligned),
+                    'feature_names': layer['feature_names'],
+                    'sample_ids': synthetic_ids,
+                    'n_samples': len(aligned_indices),
+                    'n_features': layer['n_features']
+                }
         
         # Verify consistent labels across layers
         y_arrays = [layer['y'] for layer in aligned_layers.values()]
@@ -111,7 +202,7 @@ class OmicsIntegrator:
             if not np.array_equal(y_arrays[0], y_arrays[i]):
                 warnings.warn("Group labels differ across aligned layers!")
         
-        print(f"\nAligned all layers to {len(self.common_samples)} common samples")
+        print(f"\nAligned all layers to {len(self.common_samples)} common samples using {self.alignment_method} method")
         
         return aligned_layers
     

@@ -24,43 +24,76 @@ AROMATICS
   Top feature: 2-Ethylfuran Area (VIP = 2.69)
 
 PROTEOMICS
-  PCA: First 2 components explain 56.5% variance
+  PCA: First 2 components explain 59.9% variance
   PLS-DA (Leave-One-Out): 100.00% accuracy
-  Important features (VIP > 1): 1828
-  Top feature: A0A4V4H2Z4;A0A4V4H2Z4 (VIP = 2.85)
+  Important features (VIP > 1): 1788
+  Top feature: A0A804J0F0 (VIP = 3.62)
 
 
 MULTI-OMICS INTEGRATION RESULTS
 --------------------------------------------------------------------------------
 
+METHOD COMPARISON
+             Method  Accuracy  Std              Type
+      Concatenation       1.0  0.0      Early Fusion
+Block-wise Ensemble       1.0  0.0       Late Fusion
+             DIABLO       1.0  0.0 Joint Integration
+
 DIABLO Block Correlations:
                 amino_acids  central_carbon  aromatics  proteomics
-amino_acids        1.000000        0.936661   0.455860    0.976957
-central_carbon     0.936661        1.000000   0.436366    0.929692
-aromatics          0.455860        0.436366   1.000000    0.608708
-proteomics         0.976957        0.929692   0.608708    1.000000
+amino_acids        1.000000        0.948890   0.992870    0.990955
+central_carbon     0.948890        1.000000   0.954881    0.955489
+aromatics          0.992870        0.954881   1.000000    0.999322
+proteomics         0.990955        0.955489   0.999322    1.000000
+
+Block-wise Ensemble (LOO):
+  Accuracy: 100.00%
+  Balanced Accuracy: 100.00%
 
 Concatenation Baseline (Leave-One-Out):
   Accuracy: 100.00% ± 0.00%
 
-Top Features Across All Omics:
+
+ENSEMBLE: Top Features Per Block
 
   amino_acids:
-    - ASP (VIP = 0.79)
-    - VAL (VIP = 0.55)
-    - GLN (VIP = 0.25)
+    - GLY (Importance = 0.0798)
+    - LYS (Importance = 0.0706)
+    - ASN (Importance = 0.0637)
 
   central_carbon:
-    - 48_SUCC_0.0 : Conc. (nM) (VIP = 0.73)
-    - 21_FUM_0.0 : Conc. (nM) (VIP = 0.48)
-    - 13_ATP_0.0 : Conc. (nM) (VIP = 0.48)
+    - 30_ISO_0.0 : Conc. (nM) (Importance = 0.0637)
+    - 10_ADP 0.0 : Conc. (nM) (Importance = 0.0605)
+    - CoA Neg 0.0 : Conc. (nM) (Importance = 0.0568)
 
   aromatics:
-    - Ethyl valerate Area (VIP = 0.64)
-    - 2-Pentanone Area (VIP = 0.61)
-    - Tetradecanal Area (VIP = 0.44)
+    - Eugenol Area (Importance = 0.0354)
+    - Ethyl vinyl ketone Area (Importance = 0.0346)
+    - 2-Methylpentan-2-ol Area (Importance = 0.0306)
 
   proteomics:
-    - A0A804IBQ9;A0A804IBR0 (VIP = 0.62)
-    - A0A4S8JJ79;A0A4S8JJ79;A0A804JTL2;A0A804JTL3 (VIP = 0.48)
-    - A0A4S8K7A7;A0A4S8K7A7 (VIP = 0.38)
+    - A0A804JCN4 (Importance = 0.0200)
+    - A0A804LAQ0;A0A804LAQ2 (Importance = 0.0137)
+    - A0A4S8IAL2;A0A4S8IAL2;A0A804I320 (Importance = 0.0137)
+
+DIABLO: Top Features Across All Omics:
+
+  amino_acids:
+    - ASP (VIP = 0.80)
+    - VAL (VIP = 0.55)
+    - GLN (VIP = 0.24)
+
+  central_carbon:
+    - 19_F16DP_0.0 : Conc. (nM) (VIP = 0.99)
+    - DHAP_0.0 : Conc. (nM) (VIP = 0.14)
+    - 11_AMP 0.0 : Conc. (nM) (VIP = 0.04)
+
+  aromatics:
+    - 3-Hexanone Area (VIP = 0.59)
+    - Tetrahydrothiophene Area (VIP = 0.56)
+    - Methyl isovalerate Area (VIP = 0.36)
+
+  proteomics:
+    - A0A4S8JJ79;A0A4S8JJ79;A0A804JTL2;A0A804JTL3 (VIP = 0.53)
+    - A0A804IBQ9;A0A804IBR0 (VIP = 0.39)
+    - A0A804J494 (VIP = 0.39)

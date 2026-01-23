@@ -142,7 +142,7 @@ class ProteomicsPreprocessor(BasePreprocessor):
     
     def handle_missing(self, df: pd.DataFrame, group_col: str) -> pd.DataFrame:
         """
-        Drop columns (except group_col) that are all-NaN, then impute remaining missing numeric values with the column median.
+        Drop columns (except group_col) that are all-NaN, then impute remaining missing numeric values with group-wise median.
         """
         df = df.copy()
         feature_cols = [c for c in df.columns if c != group_col]
@@ -152,9 +152,8 @@ class ProteomicsPreprocessor(BasePreprocessor):
             df = df.drop(columns=all_nan_cols)
         feature_cols = [c for c in df.columns if c != group_col]
         numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
-        # Median imputation for numeric columns with missing values
+        # Group-wise median imputation for numeric columns with missing values
         for col in numeric_cols:
             if df[col].isna().any():
-                median = df[col].median()
-                df[col] = df[col].fillna(median)
+                df[col] = df.groupby(group_col)[col].transform(lambda x: x.fillna(x.median()))
         return df

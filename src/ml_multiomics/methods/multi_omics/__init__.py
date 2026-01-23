@@ -6,13 +6,13 @@
 from .diablo import DIABLO
 from .concatenation_baseline import (
     ConcatenationBaseline,
-    WeightedConcatenation,
-    EarlyIntegration
+    WeightedConcatenation
 )
+from .ensemble import BlockWiseEnsemble
 
 __all__ = [
     'DIABLO',
     'ConcatenationBaseline',
     'WeightedConcatenation',
-    'EarlyIntegration',
+    'BlockWiseEnsemble',
 ]

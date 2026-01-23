@@ -49,7 +49,8 @@ class DIABLO:
     def fit(self, 
             blocks: Dict[str, np.ndarray],
             y: np.ndarray,
-            feature_names: Optional[Dict[str, List[str]]] = None):
+            feature_names: Optional[Dict[str, List[str]]] = None,
+            sample_ids: Optional[List[str]] = None):
         """
         Fit DIABLO model using R mixOmics.
         
@@ -62,6 +63,8 @@ class DIABLO:
             Group labels (n_samples,)
         feature_names : dict, optional
             Dictionary of {block_name: feature_names} for each block
+        sample_ids : list of str, optional
+            Sample identifiers. If None, will use generic sample_0, sample_1, etc.
         """
         self.block_names = list(blocks.keys())
         self.classes = np.unique(y)
@@ -83,8 +86,16 @@ class DIABLO:
             )
             data_blocks[block_name] = pd.DataFrame(X_block, columns=features)
         
-        # Create sample IDs
-        sample_ids = [f"sample_{i}" for i in range(n_samples[0])]
+        # Use provided sample IDs or create generic ones
+        if sample_ids is None:
+            sample_ids = [f"sample_{i}" for i in range(n_samples[0])]
+        else:
+            # Validate sample_ids length matches data
+            if len(sample_ids) != n_samples[0]:
+                raise ValueError(
+                    f"sample_ids length ({len(sample_ids)}) does not match "
+                    f"number of samples ({n_samples[0]})"
+                )
         
         # Run DIABLO in R
         print("Running DIABLO via R mixOmics...")
@@ -133,6 +144,10 @@ class DIABLO:
         # Selected features
         if 'selected_features' in self.r_results:
             self.selected_features = self.r_results['selected_features']
+        
+        # Store summary/performance for CV results extraction
+        if 'summary' in self.r_results:
+            self.results_ = {'summary': self.r_results['summary']}
     
     def get_block_vip(self, block_name: str) -> pd.DataFrame:
         """

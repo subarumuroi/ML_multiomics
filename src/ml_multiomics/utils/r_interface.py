@@ -7,8 +7,52 @@ import subprocess
 import pandas as pd
 import numpy as np
 import json
+import shutil
+import platform
 from pathlib import Path
 from typing import Dict, Optional
+
+
+def find_rscript() -> str:
+    """
+    Find Rscript executable on system.
+    
+    Returns
+    -------
+    str
+        Path to Rscript executable
+        
+    Raises
+    ------
+    FileNotFoundError
+        If Rscript cannot be found
+    """
+    # First try PATH
+    rscript_cmd = shutil.which('Rscript')
+    if rscript_cmd:
+        return rscript_cmd
+    
+    # Windows: search common R installation locations
+    if platform.system() == 'Windows':
+        common_paths = [
+            Path('C:/Program Files/R'),
+            Path('C:/Program Files (x86)/R'),
+            Path.home() / 'AppData' / 'Local' / 'Programs' / 'R',
+        ]
+        
+        for base_path in common_paths:
+            if base_path.exists():
+                # Find R-x.x.x directories
+                for r_dir in sorted(base_path.glob('R-*'), reverse=True):
+                    rscript_path = r_dir / 'bin' / 'Rscript.exe'
+                    if rscript_path.exists():
+                        return str(rscript_path)
+    
+    raise FileNotFoundError(
+        "Rscript not found. Please install R and ensure it's in your PATH.\n"
+        "Download R from: https://cran.r-project.org/\n"
+        "Or add R's bin directory to your system PATH."
+    )
 
 
 def get_r_script_path() -> str:
@@ -66,7 +110,9 @@ def run_diablo_r(data_blocks: Dict[str, pd.DataFrame],
     r_output_dir = os.path.join(output_dir, 'diablo_output')
     os.makedirs(r_output_dir, exist_ok=True)
     
-    cmd = ['Rscript', get_r_script_path(), input_dir, r_output_dir]
+    # Find Rscript executable
+    rscript_cmd = find_rscript()
+    cmd = [rscript_cmd, get_r_script_path(), input_dir, r_output_dir]
     
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     
