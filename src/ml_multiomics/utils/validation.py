@@ -163,8 +163,9 @@ class PermutationTest:
         perm_scores = []
         
         for i in range(self.n_permutations):
-            # Shuffle labels
-            y_perm = resample(y, replace=False, random_state=i)
+            # Shuffle labels properly using numpy permutation
+            np.random.seed(i)
+            y_perm = np.random.permutation(y)
             
             # Get permuted performance
             perm_cv = cv.validate_model(model, X, y_perm)
@@ -189,11 +190,6 @@ class PermutationTest:
         return results
 
 
-class BootstrapValidator:
-    """
-    Bootstrap validation for uncertainty estimation.
-    """
-    
 class ModelComparator:
     """
     Compare multiple models on same dataset.

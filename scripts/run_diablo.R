@@ -233,8 +233,66 @@ perf_result <- perf(
   progressBar = FALSE
 )
 
-cat("\nOverall error rate (LOO):\n")
-print(perf_result$error.rate$overall)
+# Debug: print structure
+cat("\nPerformance result structure:\n")
+cat("Names:", names(perf_result), "\n")
+cat("Error rate structure:\n")
+print(str(perf_result$error.rate))
+
+# Try different ways to get error rate
+loo_error_comp1 <- NA
+
+# Method 1: Try direct array access
+tryCatch({
+  if (!is.null(perf_result$error.rate$overall)) {
+    err_overall <- perf_result$error.rate$overall
+    cat("Dimensions of overall:", dim(err_overall), "\n")
+    cat("Dimnames:\n")
+    print(dimnames(err_overall))
+    
+    # Try to get the centroids.dist error for component 1
+    if ("centroids.dist" %in% dimnames(err_overall)[[2]]) {
+      loo_error_comp1 <- err_overall["Overall.ER", "centroids.dist", 1]
+      cat("Extracted error (method 1):", loo_error_comp1, "\n")
+    }
+  }
+}, error = function(e) {
+  cat("Method 1 failed:", e$message, "\n")
+})
+
+# Method 2: Try using weighted.vote if centroids.dist doesn't work
+if (is.na(loo_error_comp1)) {
+  tryCatch({
+    if (!is.null(perf_result$error.rate$overall)) {
+      err_overall <- perf_result$error.rate$overall
+      # Try first available distance method
+      dist_methods <- dimnames(err_overall)[[2]]
+      if (length(dist_methods) > 0) {
+        loo_error_comp1 <- err_overall["Overall.ER", dist_methods[1], 1]
+        cat("Extracted error (method 2, using", dist_methods[1], "):", loo_error_comp1, "\n")
+      }
+    }
+  }, error = function(e) {
+    cat("Method 2 failed:", e$message, "\n")
+  })
+}
+
+# Method 3: Use weighted vote from WeightedVote slot
+if (is.na(loo_error_comp1)) {
+  tryCatch({
+    if (!is.null(perf_result$WeightedVote.error.rate)) {
+      loo_error_comp1 <- perf_result$WeightedVote.error.rate$Overall.ER[1]
+      cat("Extracted error (method 3, WeightedVote):", loo_error_comp1, "\n")
+    }
+  }, error = function(e) {
+    cat("Method 3 failed:", e$message, "\n")
+  })
+}
+
+cat("\nFinal LOO error comp1:", loo_error_comp1, "\n")
+if (!is.null(loo_error_comp1) && length(loo_error_comp1) > 0 && !is.na(loo_error_comp1)) {
+  cat("LOO Accuracy comp1:", 1.0 - loo_error_comp1, "\n")
+}
 
 # ============================================================================
 # PERMUTATION TESTING
@@ -441,20 +499,51 @@ tryCatch({
     # Create performance dataframe
     n_comp <- dim(error_overall)[3]
     
+    # Safely extract error rates
+    error_comp1 <- tryCatch({
+      error_overall["Overall.ER", "centroids.dist", 1]
+    }, error = function(e) NA)
+    
+    error_comp2 <- tryCatch({
+      if (n_comp >= 2) error_overall["Overall.ER", "centroids.dist", 2] else NA
+    }, error = function(e) NA)
+    
     perf_data <- data.frame(
       component = paste0("comp", 1:n_comp),
-      overall_error = error_overall["Overall.ER", "centroids.dist", 1:n_comp]
+      overall_error = c(error_comp1, if(n_comp >= 2) error_comp2 else NULL)
     )
     
     write.csv(perf_data, 
              file.path(output_dir, "performance_metrics.csv"),
              row.names = FALSE)
+    
+    cat("Performance metrics saved. Error comp1:", error_comp1, "\n")
   } else {
     cat("Warning: Could not extract performance metrics in expected format\n")
+    cat("error_overall is null or not an array\n")
   }
 }, error = function(e) {
   cat("Warning: Could not save performance metrics:", e$message, "\n")
 })
+
+# Extract error rates for JSON summary (use loo_error_comp1 calculated earlier)
+error_comp1_value <- NA
+if (!is.null(loo_error_comp1) && length(loo_error_comp1) > 0 && !is.na(loo_error_comp1)) {
+  error_comp1_value <- as.numeric(loo_error_comp1)
+}
+
+error_comp2_value <- tryCatch({
+  if (optimal_ncomp >= 2 && !is.null(perf_result$error.rate$overall)) {
+    err_overall <- perf_result$error.rate$overall
+    dist_methods <- dimnames(err_overall)[[2]]
+    if (length(dist_methods) > 0) {
+      val <- err_overall["Overall.ER", dist_methods[1], 2]
+      if (is.null(val) || length(val) == 0 || is.na(val)) NA else as.numeric(val)
+    } else NA
+  } else NA
+}, error = function(e) NA)
+
+cat("Final error rates - comp1:", error_comp1_value, ", comp2:", error_comp2_value, "\n")
 
 # Save model summary as JSON
 model_summary <- list(
@@ -468,8 +557,9 @@ model_summary <- list(
     )
   }),
   performance = list(
-    overall_error_comp1 = perf_result$error.rate$overall["Overall.ER", "centroids.dist", 1],
-    overall_error_comp2 = if(optimal_ncomp >= 2) perf_result$error.rate$overall["Overall.ER", "centroids.dist", 2] else NA
+    overall_error_comp1 = error_comp1_value,
+    overall_error_comp2 = error_comp2_value,
+    loo_accuracy_comp1 = if(!is.na(error_comp1_value)) 1.0 - error_comp1_value else NA
   ),
   tuning = if(exists("tuning_cv_error") && !is.na(tuning_cv_error)) {
     list(

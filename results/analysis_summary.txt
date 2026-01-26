@@ -37,7 +37,7 @@ METHOD COMPARISON
              Method  Accuracy  Std              Type
       Concatenation       1.0  0.0      Early Fusion
 Block-wise Ensemble       1.0  0.0       Late Fusion
-             DIABLO       1.0  0.0 Joint Integration
+            DIABLO*       1.0  0.0 Joint Integration
 
 DIABLO Block Correlations:
                 amino_acids  central_carbon  aromatics  proteomics
@@ -57,24 +57,24 @@ Concatenation Baseline (Leave-One-Out):
 ENSEMBLE: Top Features Per Block
 
   amino_acids:
-    - GLY (Importance = 0.0798)
-    - LYS (Importance = 0.0706)
-    - ASN (Importance = 0.0637)
+    - ASN (Importance = 0.0845)
+    - GLY (Importance = 0.0817)
+    - TRP (Importance = 0.0810)
 
   central_carbon:
-    - 30_ISO_0.0 : Conc. (nM) (Importance = 0.0637)
-    - 10_ADP 0.0 : Conc. (nM) (Importance = 0.0605)
-    - CoA Neg 0.0 : Conc. (nM) (Importance = 0.0568)
+    - 30_ISO_0.0 : Conc. (nM) (Importance = 0.0615)
+    - 35_NAD 0.0 : Conc. (nM) (Importance = 0.0531)
+    - 19_F16DP_0.0 : Conc. (nM) (Importance = 0.0485)
 
   aromatics:
-    - Eugenol Area (Importance = 0.0354)
-    - Ethyl vinyl ketone Area (Importance = 0.0346)
-    - 2-Methylpentan-2-ol Area (Importance = 0.0306)
+    - Eugenol Area (Importance = 0.0333)
+    - Ethyl vinyl ketone Area (Importance = 0.0318)
+    - Octyl acetate Area (Importance = 0.0284)
 
   proteomics:
-    - A0A804JCN4 (Importance = 0.0200)
-    - A0A804LAQ0;A0A804LAQ2 (Importance = 0.0137)
-    - A0A4S8IAL2;A0A4S8IAL2;A0A804I320 (Importance = 0.0137)
+    - A0A804JCN4 (Importance = 0.0141)
+    - A0A4S8IQZ5;A0A4S8IQZ5;A0A804JHB1 (Importance = 0.0141)
+    - A0A4S8IGY3;A0A4S8IGY3;A0A804KKQ7 (Importance = 0.0112)
 
 DIABLO: Top Features Across All Omics:
 

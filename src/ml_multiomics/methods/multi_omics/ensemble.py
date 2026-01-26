@@ -268,13 +268,19 @@ class BlockWiseEnsemble:
         print("\nClassification Report:")
         print(classification_report(y_true, y_pred))
         
+        # Re-fit on full data so feature importance reflects all samples
+        print("\nRe-fitting on full dataset for feature importance...")
+        self.fit(blocks, y, feature_names=feature_names)
+        
         results = {
             'y_true': y_true,
             'y_pred': y_pred,
             'accuracy': accuracy,
             'balanced_accuracy': balanced_acc,
             'mean': accuracy,
-            'std': 0.0  # LOO doesn't have std across folds
+            # Note: LOO CV returns a single accuracy value, not fold-wise scores,
+            # so standard deviation is 0 by definition (there's no variance across folds)
+            'std': 0.0
         }
         
         return results

@@ -58,9 +58,6 @@ class PCAAnalysis:
             self.feature_names = list(feature_names)
         else:
             self.feature_names = [f"Feature_{i}" for i in range(X.shape[1])]
-        
-        #create dedicated feature_list attribute for backward compatibility
-        self.feature_list = self.feature_names
 
         return self
     
@@ -300,7 +297,7 @@ class PCAAnalysis:
         scale = 0.7 * np.abs(self.scores[:, [pc_x_idx, pc_y_idx]]).max()
         
         for feature in top_features:
-            idx = self.feature_list.index(feature)
+            idx = self.feature_names.index(feature)
             x = self.loadings[idx, pc_x_idx] * scale
             y = self.loadings[idx, pc_y_idx] * scale
             

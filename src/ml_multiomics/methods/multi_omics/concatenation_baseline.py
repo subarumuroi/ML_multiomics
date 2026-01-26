@@ -47,7 +47,7 @@ class ConcatenationBaseline:
         if self.classifier_type == 'random_forest':
             default_params = {
                 'n_estimators': 500,
-                'max_depth': None,
+                'max_depth': 3,  # Constrained to prevent overfitting with small n
                 'min_samples_split': 2,
                 'random_state': 42,
                 'n_jobs': -1

@@ -263,46 +263,50 @@ workflow = SingleOmicsWorkflow(
 
 ## Output Files
 
-### Single Omics Analysis
+Running `examples/example_complete_analysis.py` generates the following structure:
 
 ```
-results/amino_acids/
-├── pca_variance_explained.csv      # Variance per component
-├── pca_scree.png                   # Scree plot
-├── pca_scores.png                  # Scores plot
-├── pca_loadings.png                # Loadings plot
-├── pca_biplot.png                  # Biplot
-├── plsda_vip_scores.csv            # VIP scores
-├── plsda_scores.png                # PLS-DA scores
-├── plsda_vip.png                   # VIP plot
-├── plsda_loadings.png              # Loadings plot
-└── plsda_cm.png                    # Confusion matrix
+results/
+├── analysis_summary.txt            # Comprehensive text report
+│
+├── single_omics/                   # Individual omics layer analyses
+│   ├── amino_acids/
+│   │   ├── pca_variance_explained.csv
+│   │   ├── plsda_vip_scores.csv
+│   │   ├── pca_scree.png
+│   │   ├── pca_scores.png
+│   │   ├── plsda_scores.png
+│   │   ├── plsda_vip.png
+│   │   └── confusion_matrix.png
+│   ├── central_carbon/             # Same structure
+│   ├── aromatics/                  # Same structure
+│   └── proteomics/                 # Same structure
+│
+├── multi_omics/                    # Multi-omics integration
+│   ├── method_comparison.csv       # ⭐ Compare 3 integration methods
+│   ├── consensus_features.csv      # ⭐ Features consistent across methods
+│   ├── feature_venn.png            # ⭐ Venn diagram of feature overlap
+│   ├── diablo_vips.csv             # DIABLO feature importance
+│   ├── diablo_correlations.csv     # Block correlations
+│   ├── diablo_correlations.png     # Correlation heatmap
+│   ├── diablo_samples.png          # Sample projections
+│   ├── diablo_circos.png           # Feature correlations
+│   ├── concatenation_importance.csv
+│   ├── ensemble_importance_*.csv   # Per-block importance (4 files)
+│   ├── permutation_tests.csv       # Statistical validation (if run)
+│   └── diablo_output_[timestamp]/  # R mixOmics outputs
+│
+└── overview/                       # Summary visualizations
+    ├── sample_distribution.png
+    ├── method_comparison.png       # ⭐ Visual comparison
+    └── single_omics_performance.png
 ```
 
-### Multi-Omics Integration
-
-```
-results/multi_omics/
-├── diablo_correlations.csv         # Block correlations
-├── diablo_vips.csv                 # Important features per block
-├── concatenation_importance.csv    # Concatenation feature importance
-├── ensemble_importance_*.csv       # Per-block ensemble importance
-├── method_comparison.csv           # 3-method performance comparison
-├── permutation_tests.csv           # Permutation test p-values (if run)
-├── permutation_test_report.txt     # Detailed interpretation (if run)
-└── diablo_output_[timestamp]/      # DIABLO R output
-    └── diablo_output/
-        └── publication_plots/      # R/mixomics publication plots
-            ├── 01_DIABLO_samples.png
-            ├── 02_DIABLO_indiv.png
-            ├── 04_DIABLO_loadings.png
-            └── 06_DIABLO_circos.png
-
-results/overview/
-├── sample_distribution.png         # Sample counts per omics layer
-├── method_comparison.png           # Bar chart comparing methods
-└── single_omics_performance.png    # Single-omics PLS-DA comparison
-```
+**Key Files:**
+- `method_comparison.csv` - Performance of 3 integration methods
+- `analysis_summary.txt` - Complete text report with all results
+- `consensus_features.csv` - Features important across all methods
+- `feature_venn.png` - Visual overlap between methods
 
 ## Statistical Validation: Permutation Testing
 
@@ -340,8 +344,6 @@ python examples/add_permutation_tests.py --n-permutations 5000
 - **P-value < 0.05**: Model significantly better than random ✓
 - **P-value ≥ 0.05**: Cannot distinguish from random chance ✗
 - **With n<15**: Results are exploratory/POC only ⚠️
-
-See [OUTPUT_GUIDE.md](OUTPUT_GUIDE.md#permutation-testing-optional) for detailed interpretation.
 
 ### Consensus Features & Venn Diagram
 

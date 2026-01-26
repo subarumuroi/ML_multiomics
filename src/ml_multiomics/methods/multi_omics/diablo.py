@@ -148,6 +148,80 @@ class DIABLO:
         # Store summary/performance for CV results extraction
         if 'summary' in self.r_results:
             self.results_ = {'summary': self.r_results['summary']}
+        
+        # Extract CV performance metrics
+        self.cv_results_ = self._extract_cv_results()
+    
+    def _extract_cv_results(self) -> dict:
+        """
+        Extract cross-validation results from R output.
+        
+        Note: CV accuracy extraction can fail if:
+        - R mixOmics perf() returns unexpected format for small sample sizes
+        - The R script encounters errors during performance evaluation
+        - The error rate array structure differs from expected format
+        
+        If extraction fails, caller should handle None accuracy appropriately
+        (e.g., warn user and use training accuracy as fallback estimate).
+        
+        Returns
+        -------
+        dict
+            CV results with 'accuracy', 'error_rate', 'std', 'cv_type' keys.
+            'accuracy' will be None if extraction failed.
+        """
+        cv_results = {
+            'accuracy': None,
+            'error_rate': None,
+            'std': 0.0,  # LOO produces single accuracy, no variance across folds
+            'cv_type': 'Leave-One-Out'
+        }
+        
+        # Try to get from performance DataFrame
+        if 'performance' in self.r_results and self.r_results['performance'] is not None:
+            perf_df = self.r_results['performance']
+            if isinstance(perf_df, pd.DataFrame) and 'overall_error' in perf_df.columns:
+                # Use component 1 error rate
+                error_rate = perf_df['overall_error'].iloc[0]
+                if isinstance(error_rate, (int, float)) and not pd.isna(error_rate):
+                    cv_results['error_rate'] = error_rate
+                    cv_results['accuracy'] = 1.0 - error_rate
+        
+        # Fallback: try to get from summary JSON
+        if cv_results['accuracy'] is None and 'summary' in self.r_results:
+            summary = self.r_results['summary']
+            if 'performance' in summary:
+                perf = summary['performance']
+                
+                # First try the direct accuracy field
+                if 'loo_accuracy_comp1' in perf:
+                    acc = perf['loo_accuracy_comp1']
+                    if isinstance(acc, (int, float)) and not pd.isna(acc):
+                        cv_results['accuracy'] = acc
+                        cv_results['error_rate'] = 1.0 - acc
+                
+                # Fallback to error rate
+                elif 'overall_error_comp1' in perf:
+                    error_rate = perf['overall_error_comp1']
+                    # Check if it's a valid numeric value (not empty dict or None)
+                    if isinstance(error_rate, (int, float)) and not pd.isna(error_rate):
+                        cv_results['error_rate'] = error_rate
+                        cv_results['accuracy'] = 1.0 - error_rate
+        
+        return cv_results
+    
+    def get_cv_accuracy(self) -> float:
+        """
+        Get cross-validation accuracy from DIABLO LOO CV.
+        
+        Returns
+        -------
+        float
+            LOO CV accuracy (1 - error_rate)
+        """
+        if hasattr(self, 'cv_results_') and self.cv_results_['accuracy'] is not None:
+            return self.cv_results_['accuracy']
+        return None
     
     def get_block_vip(self, block_name: str) -> pd.DataFrame:
         """

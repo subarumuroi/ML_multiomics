@@ -36,19 +36,45 @@ class MetabolomicsPreprocessor(BasePreprocessor):
     
     def handle_missing(self, df: pd.DataFrame, group_col: str) -> pd.DataFrame:
         """
-        Drop columns (except group_col) that are all-NaN, then fill remaining missing numeric values with fill_value (default 0).
-        No group-wise imputation is performed. This treats missing as undetected/absent.
+        Handle missing values for metabolomics data.
+        
+        Strategy:
+        1. Drop columns that are entirely NaN (no information)
+        2. Fill remaining NaN with fill_value (default: 0)
+        
+        ASSUMPTION: Missing values represent undetected/absent metabolites.
+        This assumes Missing Not At Random (MNAR) - common for metabolomics
+        where values below detection limit are recorded as missing.
+        
+        WARNING: If your data has a different missing mechanism (e.g., random
+        technical failures), consider using group-wise median imputation instead.
+        
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Data with potential missing values
+        group_col : str
+            Column name for group labels (excluded from imputation)
+            
+        Returns
+        -------
+        pd.DataFrame
+            Data with missing values handled
         """
         df = df.copy()
         feature_cols = [c for c in df.columns if c != group_col]
         # Drop columns that are all-NaN
         all_nan_cols = [c for c in feature_cols if df[c].isna().all()]
         if all_nan_cols:
+            self._log(f"Dropping {len(all_nan_cols)} all-NaN columns")
             df = df.drop(columns=all_nan_cols)
         # Fill remaining missing values in numeric columns
         feature_cols = [c for c in df.columns if c != group_col]
         numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
         fill_value = self.config.get('fill_value', 0)
+        n_missing = df[numeric_cols].isna().sum().sum()
+        if n_missing > 0:
+            self._log(f"Filling {n_missing} missing values with {fill_value} (assumes undetected)")
         df[numeric_cols] = df[numeric_cols].fillna(fill_value)
         return df
     
