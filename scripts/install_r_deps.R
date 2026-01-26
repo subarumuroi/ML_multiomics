@@ -1,8 +1,28 @@
 #!/usr/bin/env Rscript
 
-# Install required R packages with specific versions
-install.packages('BiocManager')
-BiocManager::install('mixOmics')  # Version 6.26.0 tested
-install.packages('jsonlite')      # Version 1.8.8 tested
+# Set CRAN mirror
+options(repos = c(CRAN = "https://cloud.r-project.org"))
 
-cat("R dependencies installed successfully\n")
+# Function to install if missing
+install_if_missing <- function(pkg, bioc = FALSE) {
+  if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
+    cat(sprintf("Installing %s...\n", pkg))
+    if (bioc) {
+      if (!require("BiocManager", quietly = TRUE)) {
+        install.packages("BiocManager")
+      }
+      BiocManager::install(pkg, ask = FALSE, update = FALSE)
+    } else {
+      install.packages(pkg)
+    }
+  } else {
+    cat(sprintf("%s already installed\n", pkg))
+  }
+}
+
+# Install dependencies
+install_if_missing("BiocManager")
+install_if_missing("mixOmics", bioc = TRUE)
+install_if_missing("jsonlite")
+
+cat("All R dependencies ready\n")
