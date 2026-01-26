@@ -16,14 +16,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 from ml_multiomics.workflows.multi_omics_workflow import MultiOmicsWorkflow
 
 
-def add_permutation_tests_to_existing_analysis(n_permutations=1000):
+def add_permutation_tests_to_existing_analysis(n_permutations=100):
     """
     Add permutation testing to completed multi-omics analysis.
     
     Parameters
     ----------
     n_permutations : int
-        Number of permutations (1000 for quick POC, 5000-10000 for publication)
+        Number of permutations. Default 100 is sufficient for n=9:
+        - Minimum achievable p-value = 1/(n_perm+1) = 0.01 for 100 perms
+        - For α=0.05, 100 permutations provides adequate resolution
+        - Use 1000+ only if you need finer p-value precision
     """
     print("\n" + "="*80)
     print("ADDING PERMUTATION TESTS TO EXISTING ANALYSIS")
@@ -67,17 +70,18 @@ def add_permutation_tests_to_existing_analysis(n_permutations=1000):
     
     # Populate results dictionary with existing CV results
     for _, row in existing_results.iterrows():
-        if row['Method'] == 'Concatenation':
+        method_name = row['Method'].rstrip('*')  # Handle DIABLO* notation
+        if method_name == 'Concatenation':
             workflow.results['concatenation_cv'] = {
                 'accuracy': row['Accuracy'],
                 'std': row['Std']
             }
-        elif row['Method'] == 'Block-wise Ensemble':
+        elif method_name == 'Block-wise Ensemble':
             workflow.results['ensemble_cv'] = {
                 'accuracy': row['Accuracy'],
                 'std': row['Std']
             }
-        elif row['Method'] == 'DIABLO':
+        elif method_name == 'DIABLO':
             workflow.results['diablo_cv'] = {
                 'accuracy': row['Accuracy'],
                 'std': row['Std']
@@ -225,14 +229,14 @@ if __name__ == "__main__":
     parser.add_argument(
         '--n-permutations', 
         type=int, 
-        default=1000,
-        help='Number of permutations (default: 1000)'
+        default=100,
+        help='Number of permutations (default: 100, sufficient for n<15)'
     )
     
     args = parser.parse_args()
     
     print(f"\nRunning with {args.n_permutations} permutations")
-    print("(Use --n-permutations 5000 for publication-quality results)")
+    print("(100 permutations gives min p-value of 0.01, sufficient for α=0.05)")
     
     perm_results = add_permutation_tests_to_existing_analysis(
         n_permutations=args.n_permutations

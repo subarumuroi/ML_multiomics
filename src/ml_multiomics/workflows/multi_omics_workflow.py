@@ -617,75 +617,35 @@ class MultiOmicsWorkflow:
             print(f"  Permuted Mean: {perm_scores.mean():.3f} ± {perm_scores.std():.3f}")
             print(f"  P-value: {p_value:.4f}")
         
-        # 3. Test DIABLO Method (via R)
+        # 3. Test DIABLO Method
+        # Note: True permutation testing for DIABLO would require re-running R
+        # for each permutation (slow). Instead, we use a theoretical null distribution.
         if 'diablo' in self.integration_methods:
-            print(f"\nTesting DIABLO (R-based, may take longer)...")
+            print(f"\nTesting DIABLO...")
+            print("  Note: Using theoretical null distribution (random guessing)")
+            print("  Full permutation test would require re-running R per permutation")
             
-            blocks_dict = {name: multi_block.get_block(name) 
-                          for name in multi_block.get_block_names()}
-            feature_names = {name: multi_block.blocks[name]['feature_names']
-                           for name in multi_block.get_block_names()}
-            
-            # Get true accuracy (from original fit)
-            # Note: We use the reported accuracy from diablo_cv
+            # Get true accuracy
             true_acc = self.results['diablo_cv']['accuracy']
             
-            # Run permutation test with DIABLO
-            perm_scores = []
-            loo = LeaveOneOut()
+            # Theoretical null: random guessing with class balance
+            unique_classes, class_counts = np.unique(y, return_counts=True)
+            # Expected accuracy under random guessing = 1/n_classes (balanced)
+            # With some variance from finite samples
+            n_classes = len(unique_classes)
+            expected_random_acc = 1.0 / n_classes
             
+            # Simulate null distribution via multinomial sampling
+            # This simulates LOO accuracy when predictions are random
+            perm_scores = []
             for perm_idx in range(n_permutations):
-                # Permute labels
-                perm_seed = random_state + perm_idx
-                np.random.seed(perm_seed)
-                y_perm = np.random.permutation(y)
-                
-                # LOO CV with permuted labels
-                y_pred_list = []
-                y_true_list = []
-                
-                for train_idx, test_idx in loo.split(list(blocks_dict.values())[0]):
-                    # Split each block
-                    blocks_train = {name: X[train_idx] for name, X in blocks_dict.items()}
-                    y_train = y_perm[train_idx]
-                    y_test = y_perm[test_idx]
-                    
-                    # Train DIABLO and get predictions
-                    # For efficiency, use a simpler approach: fit once and check class assignment
-                    # Full DIABLO LOO CV would be too slow for permutation testing
-                    # Instead, we'll use a proxy: fit full model and predict
-                    from ml_multiomics.methods.multi_omics import DIABLO
-                    diablo_perm = DIABLO(n_components=2)
-                    
-                    # Convert to DataFrames for R interface
-                    blocks_train_df = {name: pd.DataFrame(X) for name, X in blocks_train.items()}
-                    
-                    # Simplified: Just check if random labels give lower accuracy
-                    # For a full implementation, we'd fit DIABLO in LOO for each permutation
-                    # This is computationally expensive, so we use a proxy
-                    pass
-                
-                # Simplified approach: Assume random performance for permuted labels
-                # WARNING: This is an APPROXIMATION, not a true permutation test
-                # A proper permutation test would re-fit DIABLO for each permutation,
-                # but this is computationally expensive (R call overhead).
-                print("\n⚠️  Note: DIABLO permutation test uses approximation (random baseline)")
-                print("    A full permutation test would require re-running DIABLO per permutation.")
-                
-                # For small n, random guessing accuracy depends on class balance
-                unique_classes, class_counts = np.unique(y, return_counts=True)
-                # Random guess accuracy = largest class proportion
-                random_acc = np.max(class_counts) / len(y)
-                perm_scores.append(random_acc)
-                
-                if (perm_idx + 1) % 100 == 0:
-                    print(f"  Progress: {perm_idx + 1}/{n_permutations}")
+                np.random.seed(random_state + perm_idx)
+                # Simulate random predictions for LOO (n predictions)
+                random_preds = np.random.choice(unique_classes, size=n_samples)
+                perm_acc = np.mean(random_preds == y)
+                perm_scores.append(perm_acc)
             
             perm_scores = np.array(perm_scores)
-            # Add some noise to simulate variation
-            perm_scores += np.random.normal(0, 0.05, n_permutations)
-            perm_scores = np.clip(perm_scores, 0, 1)
-            
             p_value = (np.sum(perm_scores >= true_acc) + 1) / (n_permutations + 1)
             
             results_list.append({
@@ -698,9 +658,8 @@ class MultiOmicsWorkflow:
             })
             
             print(f"  True Accuracy: {true_acc:.3f}")
-            print(f"  Permuted Mean: {perm_scores.mean():.3f} ± {perm_scores.std():.3f}")
+            print(f"  Null (random): {perm_scores.mean():.3f} ± {perm_scores.std():.3f}")
             print(f"  P-value: {p_value:.4f}")
-            print(f"  Note: DIABLO permutation uses simplified null distribution")
         
         # Create results dataframe
         perm_df = pd.DataFrame(results_list)
