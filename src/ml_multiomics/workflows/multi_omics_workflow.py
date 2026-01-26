@@ -791,14 +791,15 @@ class MultiOmicsWorkflow:
                     ax=ax
                 )
                 
-                # Customize colors
-                if venn.get_patch_by_id('100'): venn.get_patch_by_id('100').set_color('#ff9999')
-                if venn.get_patch_by_id('010'): venn.get_patch_by_id('010').set_color('#99cc99')
-                if venn.get_patch_by_id('001'): venn.get_patch_by_id('001').set_color('#9999ff')
-                if venn.get_patch_by_id('110'): venn.get_patch_by_id('110').set_color('#ffcc99')
-                if venn.get_patch_by_id('101'): venn.get_patch_by_id('101').set_color('#cc99ff')
-                if venn.get_patch_by_id('011'): venn.get_patch_by_id('011').set_color('#99ccff')
-                if venn.get_patch_by_id('111'): venn.get_patch_by_id('111').set_color('#ffff99')
+                # Customize colors to match method comparison bar chart
+                # Concatenation: blue, Ensemble: red, DIABLO: green
+                if venn.get_patch_by_id('100'): venn.get_patch_by_id('100').set_color('#3498db')  # Concatenation only
+                if venn.get_patch_by_id('010'): venn.get_patch_by_id('010').set_color('#e74c3c')  # Ensemble only
+                if venn.get_patch_by_id('001'): venn.get_patch_by_id('001').set_color('#2ecc71')  # DIABLO only
+                if venn.get_patch_by_id('110'): venn.get_patch_by_id('110').set_color('#a29bfe')  # Concat + Ensemble
+                if venn.get_patch_by_id('101'): venn.get_patch_by_id('101').set_color('#00b894')  # Concat + DIABLO
+                if venn.get_patch_by_id('011'): venn.get_patch_by_id('011').set_color('#fdcb6e')  # Ensemble + DIABLO
+                if venn.get_patch_by_id('111'): venn.get_patch_by_id('111').set_color('#fab1a0')  # All three (consensus)
                 
                 # Add circles
                 venn3_circles(
