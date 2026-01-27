@@ -72,8 +72,8 @@ ENSEMBLE: Top Features Per Block
     - Octyl acetate Area (Importance = 0.0284)
 
   proteomics:
-    - A0A804JCN4 (Importance = 0.0141)
     - A0A4S8IQZ5;A0A4S8IQZ5;A0A804JHB1 (Importance = 0.0141)
+    - A0A804JCN4 (Importance = 0.0141)
     - A0A4S8IGY3;A0A4S8IGY3;A0A804KKQ7 (Importance = 0.0112)
 
 DIABLO: Top Features Across All Omics:

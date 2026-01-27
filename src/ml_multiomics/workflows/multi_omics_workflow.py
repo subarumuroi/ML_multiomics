@@ -1134,6 +1134,9 @@ class MultiOmicsWorkflow:
                 importance_df.to_csv(
                     f"{output_dir}/ensemble_importance_{block_name}.csv", index=False)
 
+        # Save concise top-feature summary next to method comparison (overview folder)
+        self._save_feature_summary(output_dir, top_n=20)
+
         # Save figures
         for key, value in self.results.items():
             if key.startswith('fig_'):
@@ -1145,6 +1148,73 @@ class MultiOmicsWorkflow:
     def display_results(self):
         """Display all plots."""
         plt.show()
+
+    def _save_feature_summary(self, output_dir: str, top_n: int = 20):
+        """Save unified top-feature summary for easy cross-model comparison."""
+        import os
+
+        rows = []
+
+        # Concatenation: top N overall, strip block prefix for readability
+        if 'concatenation_importance' in self.results:
+            concat_df = self.results['concatenation_importance'].head(top_n)
+            for idx, row in concat_df.iterrows():
+                feature = row['Feature']
+                block = 'unknown'
+                clean_name = feature
+                if '_' in feature:
+                    parts = feature.split('_', 1)
+                    if len(parts) == 2:
+                        block, clean_name = parts[0], parts[1]
+                rows.append({
+                    'Method': 'Concatenation',
+                    'Block': block,
+                    'Feature': clean_name,
+                    'Score': row['Importance'],
+                    'Metric': 'Importance',
+                    'Rank': idx + 1,
+                    'Notes': f'Top {top_n} overall'
+                })
+
+        # Ensemble: top features per block (balanced selection)
+        if 'ensemble_importance' in self.results:
+            n_blocks = max(1, len(self.results['ensemble_importance']))
+            per_block = max(1, top_n // n_blocks)
+            for block_name, importance_df in self.results['ensemble_importance'].items():
+                for rank_idx, row in importance_df.head(per_block).iterrows():
+                    rows.append({
+                        'Method': 'Ensemble',
+                        'Block': block_name,
+                        'Feature': row['Feature'],
+                        'Score': row['Importance'],
+                        'Metric': 'Importance',
+                        'Rank': rank_idx + 1,
+                        'Notes': f'Top {per_block} in block'
+                    })
+
+        # DIABLO: important features (or top N fallback)
+        if 'diablo_vips' in self.results:
+            vip_df = self.results['diablo_vips']
+            important = vip_df[vip_df['Important'] == True] if 'Important' in vip_df.columns else vip_df
+            selected = important.head(top_n) if not important.empty else vip_df.head(top_n)
+            for rank_idx, row in selected.iterrows():
+                rows.append({
+                    'Method': 'DIABLO',
+                    'Block': row.get('Block', 'unknown'),
+                    'Feature': row['Feature'],
+                    'Score': row['VIP'],
+                    'Metric': 'VIP',
+                    'Rank': rank_idx + 1,
+                    'Notes': 'Important=True' if 'Important' in row and row['Important'] is True else 'Top ranked'
+                })
+
+        if not rows:
+            return
+
+        summary_df = pd.DataFrame(rows)
+        overview_dir = os.path.join(os.path.dirname(output_dir), 'overview')
+        os.makedirs(overview_dir, exist_ok=True)
+        summary_df.to_csv(os.path.join(overview_dir, 'top_features_summary.csv'), index=False)
 
 
 # Example usage
