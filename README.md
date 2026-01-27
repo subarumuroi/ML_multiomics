@@ -1,6 +1,15 @@
 # Multi-Omics Machine Learning Framework
 
-A comprehensive Python framework for analyzing and integrating multi-omics datasets from banana ripening studies, specifically designed for metabolomics (amino acids, central carbon metabolism), proteomics, and volatile compounds (aromatics) data.
+A comprehensive, **reusable Python framework** for analyzing and integrating multi-omics datasets. While demonstrated here with banana ripening data, the framework is designed to work with **any multi-omics study**.
+
+## Why This Framework?
+
+- **Plug-and-play with your data**: Bring any combination of omics layers (metabolomics, proteomics, transcriptomics, lipidomics, volatiles, etc.)
+- **Configurable preprocessing**: Each omics layer can have its own transformation, scaling, and imputation strategy
+- **Three integration approaches**: Compare DIABLO (joint), concatenation (early fusion), and ensemble (late fusion) methods
+- **Consensus feature discovery**: Identify robust biomarkers that appear across multiple methods
+- **Small sample ready**: Built-in LOO cross-validation and permutation testing for n<30 studies
+- **Publication-quality outputs**: Automated R/mixOmics visualizations (circos plots, loadings, etc.)
 
 ## Features
 
@@ -128,7 +137,9 @@ ml_multiomics/
 │   └── install_r_deps.R 
 │
 ├── examples/
-│   └── example_complete_analysis.py
+│   ├── example_complete_analysis.py     # Main analysis script
+│   ├── example_with_permutation_tests.py
+│   └── add_permutation_tests.py
 │
 ├── tests/
 │
@@ -205,6 +216,59 @@ results = workflow.run_full_integration(
 workflow.save_results("results/multi_omics")
 ```
 
+## Using Your Own Data
+
+The framework is **not limited to the included banana dataset**. To use with your own multi-omics data:
+
+### 1. Prepare your CSVs
+Each omics layer needs a CSV with a `Groups` column (your class labels) and feature columns:
+
+```csv
+Groups,Feature_1,Feature_2,...
+ClassA,0.523,1.234,...
+ClassA,0.612,1.189,...
+ClassB,1.234,2.456,...
+```
+
+### 2. Define your blocks and omics types
+```python
+# Your data - any number of omics layers
+data_dict = {
+    'transcriptomics': pd.read_csv("your_rnaseq.csv"),
+    'metabolomics': pd.read_csv("your_metabolites.csv"),
+    'lipidomics': pd.read_csv("your_lipids.csv"),
+}
+
+# Map each block to a preprocessing type
+# Available types: 'metabolomics', 'proteomics', 'volatiles'
+omics_types = {
+    'transcriptomics': 'proteomics',   # Uses log2, stricter filtering
+    'metabolomics': 'metabolomics',    # Uses log, pareto scaling
+    'lipidomics': 'metabolomics',      # Similar to metabolomics
+}
+```
+
+### 3. Run the workflow
+```python
+workflow = MultiOmicsWorkflow()
+results = workflow.run_full_integration(
+    data_dict=data_dict,
+    omics_types=omics_types,
+    group_col='Groups',  # Or whatever your class column is called
+    n_components=2
+)
+workflow.save_results("results/my_study")
+```
+
+### Supported Omics Types (Preprocessing Presets)
+| Type | Best For | Transform | Scaling | Notes |
+|------|----------|-----------|---------|-------|
+| `metabolomics` | Metabolomics, lipidomics | log | Pareto | Half-min imputation |
+| `proteomics` | Proteomics, transcriptomics | log2 | Pareto | Stricter filtering |
+| `volatiles` | GC-MS volatiles, aromatics | log | Pareto | TSN normalization |
+
+All preprocessing is **fully configurable** - see [Preprocessing Configurations](#preprocessing-configurations) below.
+
 ## Data Format
 
 Your CSV files should have this structure:
@@ -230,9 +294,9 @@ Each omics type has default configurations that can be customized:
 # Custom configuration for metabolomics
 custom_config = {
     'drop_threshold': 0.5,    # Drop features with >50% missing
-    'fill_value': 0,          # Fill remaining NaNs with 0
-    'transform': 'log',       # Log transformation
-    'scaling': 'pareto',      # Pareto scaling
+    'imputation': 'half_min', # 'half_min' or 'zero' or 'group_median'
+    'transform': 'log',       # 'log', 'log2', or None
+    'scaling': 'pareto',      # 'pareto', 'standard', or 'minmax'
 }
 
 workflow = SingleOmicsWorkflow(
@@ -245,19 +309,21 @@ workflow = SingleOmicsWorkflow(
 
 **Metabolomics:**
 - Drop threshold: 50%
-- Imputation: Zero-fill (biological interpretation: below detection limit)
+- Imputation: Half-minimum (better for log transform than zero-fill)
 - Transform: Log
 - Scaling: Pareto
+- Handles negative values: Auto-shifts to positive range
 
 **Volatiles:**
 - Drop threshold: 60% (more lenient for sparse data)
-- Imputation: Zero-fill (biological interpretation: below detection limit)
+- **Total Sum Normalization (TSN)**: Applied to reduce sample-to-sample variability
+- Imputation: Half-minimum
 - Transform: Log
 - Scaling: Pareto
 
 **Proteomics:**
 - Drop threshold: 30% (stricter)
-- Imputation: Group-wise median (avoids data leakage between groups)
+- Imputation: Group-wise median, then half-minimum fallback
 - Transform: Log2
 - Scaling: Pareto
 
@@ -284,13 +350,14 @@ results/
 │
 ├── multi_omics/                    # Multi-omics integration
 │   ├── method_comparison.csv       # ⭐ Compare 3 integration methods
-│   ├── consensus_features.csv      # ⭐ Features consistent across methods
+│   ├── consensus_features_by_block.csv  # ⭐ Features consistent across methods (per block)
 │   ├── feature_venn.png            # ⭐ Venn diagram of feature overlap
 │   ├── diablo_vips.csv             # DIABLO feature importance
 │   ├── diablo_correlations.csv     # Block correlations
 │   ├── diablo_correlations.png     # Correlation heatmap
 │   ├── diablo_samples.png          # Sample projections
 │   ├── diablo_circos.png           # Feature correlations
+│   ├── diablo_arrow.png            # Block agreement (if n≥10)
 │   ├── concatenation_importance.csv
 │   ├── ensemble_importance_*.csv   # Per-block importance (4 files)
 │   ├── permutation_tests.csv       # Statistical validation (if run)
@@ -299,13 +366,15 @@ results/
 └── overview/                       # Summary visualizations
     ├── sample_distribution.png
     ├── method_comparison.png       # ⭐ Visual comparison
-    └── single_omics_performance.png
+    ├── single_omics_performance.png
+    └── top_features_summary.csv    # ⭐ Top features from all methods
 ```
 
 **Key Files:**
 - `method_comparison.csv` - Performance of 3 integration methods
 - `analysis_summary.txt` - Complete text report with all results
-- `consensus_features.csv` - Features important across all methods
+- `consensus_features_by_block.csv` - Features important across methods (per omics block)
+- `top_features_summary.csv` - Side-by-side comparison of top features from each method
 - `feature_venn.png` - Visual overlap between methods
 
 ## Statistical Validation: Permutation Testing
@@ -429,6 +498,22 @@ This framework implements methods from:
 - PLS-DA: Wold et al. (1983) The multivariate calibration problem in chemistry
 
 ## Recent Implementation Notes (January 2026)
+
+### Preprocessing Improvements (Latest)
+
+**Half-Minimum Imputation (Commit TBD)**
+- **Previous**: Zero-fill for missing values → log(0+ε) = -23 (artificial floor)
+- **New**: Half-minimum imputation → fills with half of smallest positive value
+- **Benefit**: Keeps imputed values in realistic range for log transform
+
+**Total Sum Normalization for Volatiles**
+- **Issue**: Aromatics data had 73% CV in sample totals (injection variability)
+- **Solution**: TSN normalizes each sample to median total before log transform
+- **Result**: Removes technical variability, features now ranked by relative abundance
+
+**Proteomics Fallback Imputation**
+- Group-wise median imputation with half-minimum fallback
+- Handles proteins missing in entire groups (where median would be NaN)
 
 ### Scientific Methodology Corrections
 

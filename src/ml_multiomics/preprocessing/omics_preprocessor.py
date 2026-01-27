@@ -28,7 +28,7 @@ class MetabolomicsPreprocessor(BasePreprocessor):
         """Default configuration for metabolomics."""
         return {
             'drop_threshold': 0.5,      # Drop features with >50% missing
-            'fill_value': 0,             # Fill remaining NaNs with 0 (undetected)
+            'imputation': 'half_min',    # Half-minimum imputation (better than 0 for log)
             'transform': 'log',          # Log transform concentrations
             'scaling': 'pareto',         # Pareto scaling preserves structure
             'handle_negatives': True,    # Shift negative values if present
@@ -40,14 +40,12 @@ class MetabolomicsPreprocessor(BasePreprocessor):
         
         Strategy:
         1. Drop columns that are entirely NaN (no information)
-        2. Fill remaining NaN with fill_value (default: 0)
+        2. Fill remaining NaN with half-minimum of each feature
+           (better than 0 for subsequent log transform)
         
         ASSUMPTION: Missing values represent undetected/absent metabolites.
         This assumes Missing Not At Random (MNAR) - common for metabolomics
         where values below detection limit are recorded as missing.
-        
-        WARNING: If your data has a different missing mechanism (e.g., random
-        technical failures), consider using group-wise median imputation instead.
         
         Parameters
         ----------
@@ -71,11 +69,27 @@ class MetabolomicsPreprocessor(BasePreprocessor):
         # Fill remaining missing values in numeric columns
         feature_cols = [c for c in df.columns if c != group_col]
         numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
-        fill_value = self.config.get('fill_value', 0)
+        
+        imputation = self.config.get('imputation', 'half_min')
         n_missing = df[numeric_cols].isna().sum().sum()
+        
         if n_missing > 0:
-            self._log(f"Filling {n_missing} missing values with {fill_value} (assumes undetected)")
-        df[numeric_cols] = df[numeric_cols].fillna(fill_value)
+            if imputation == 'half_min':
+                # Half-minimum imputation: fill with half of the minimum positive value
+                for col in numeric_cols:
+                    if df[col].isna().any():
+                        positive_vals = df[col][df[col] > 0]
+                        if len(positive_vals) > 0:
+                            half_min = positive_vals.min() / 2
+                        else:
+                            half_min = 1e-10  # Fallback for all-zero columns
+                        df[col] = df[col].fillna(half_min)
+                self._log(f"Filled {n_missing} missing values with half-minimum (MNAR assumption)")
+            else:
+                # Fallback to constant fill
+                fill_value = self.config.get('fill_value', 0)
+                df[numeric_cols] = df[numeric_cols].fillna(fill_value)
+                self._log(f"Filled {n_missing} missing values with {fill_value}")
         return df
     
     def apply_transformation(self, X: np.ndarray) -> np.ndarray:
@@ -120,26 +134,62 @@ class VolatilesPreprocessor(BasePreprocessor):
         """Default configuration for volatiles."""
         return {
             'drop_threshold': 0.6,       # More lenient for sparse volatile data
-            'fill_value': 0,              # Undetected = absent
+            'imputation': 'half_min',     # Half-minimum imputation (better for log)
+            'apply_tsn': True,            # Total Sum Normalization (high CV in volatiles)
             'transform': 'log',           # Log transform helps with skewness
-            'scaling': 'pareto',        # changed from standard to pareto for DIABLO consistency
+            'scaling': 'pareto',          # Pareto scaling for DIABLO consistency
             'handle_negatives': False,    # Area counts shouldn't be negative
         }
     
     def handle_missing(self, df: pd.DataFrame, group_col: str) -> pd.DataFrame:
         """
-        Drop columns (except group_col) that are all-NaN, then fill remaining missing numeric values with fill_value (default 0).
-        No group-wise imputation is performed. This treats missing as undetected/absent.
+        Handle missing values for volatiles data:
+        1. Drop columns that are all-NaN
+        2. Apply Total Sum Normalization (TSN) if enabled (reduces sample-to-sample variability)
+        3. Fill remaining missing with half-minimum of each feature
         """
         df = df.copy()
         feature_cols = [c for c in df.columns if c != group_col]
         all_nan_cols = [c for c in feature_cols if df[c].isna().all()]
         if all_nan_cols:
+            self._log(f"Dropping {len(all_nan_cols)} all-NaN columns")
             df = df.drop(columns=all_nan_cols)
+        
         feature_cols = [c for c in df.columns if c != group_col]
         numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
-        fill_value = self.config.get('fill_value', 0)
-        df[numeric_cols] = df[numeric_cols].fillna(fill_value)
+        
+        # Apply Total Sum Normalization (TSN) if enabled
+        # This normalizes each sample to the same total, reducing injection variability
+        if self.config.get('apply_tsn', True):
+            row_sums = df[numeric_cols].sum(axis=1)
+            median_total = row_sums.median()
+            cv_before = row_sums.std() / row_sums.mean() * 100
+            
+            # Normalize each row to median total (preserves scale)
+            for col in numeric_cols:
+                df[col] = df[col] / row_sums * median_total
+            
+            cv_after = df[numeric_cols].sum(axis=1).std() / df[numeric_cols].sum(axis=1).mean() * 100
+            self._log(f"Applied TSN: CV reduced from {cv_before:.1f}% to {cv_after:.1f}%")
+        
+        # Half-minimum imputation
+        n_missing = df[numeric_cols].isna().sum().sum()
+        if n_missing > 0:
+            imputation = self.config.get('imputation', 'half_min')
+            if imputation == 'half_min':
+                for col in numeric_cols:
+                    if df[col].isna().any():
+                        positive_vals = df[col][df[col] > 0]
+                        if len(positive_vals) > 0:
+                            half_min = positive_vals.min() / 2
+                        else:
+                            half_min = 1e-10
+                        df[col] = df[col].fillna(half_min)
+                self._log(f"Filled {n_missing} missing values with half-minimum")
+            else:
+                fill_value = self.config.get('fill_value', 0)
+                df[numeric_cols] = df[numeric_cols].fillna(fill_value)
+                self._log(f"Filled {n_missing} missing values with {fill_value}")
         return df
 
 
@@ -160,26 +210,53 @@ class ProteomicsPreprocessor(BasePreprocessor):
         """Default configuration for proteomics."""
         return {
             'drop_threshold': 0.3,        # Stricter for proteomics
-            'fill_value': 0,            # Should be imputed, but 0 for missing values
+            'imputation': 'group_median',  # Group-wise median, then half-min fallback
             'transform': 'log2',           # Log2 is standard for proteomics
-            'scaling': 'pareto',         # changed from standard to pareto for DIABLO consistency
+            'scaling': 'pareto',           # Pareto scaling for DIABLO consistency
             'handle_negatives': False,     # Shouldn't have negatives
         }
     
     def handle_missing(self, df: pd.DataFrame, group_col: str) -> pd.DataFrame:
         """
-        Drop columns (except group_col) that are all-NaN, then impute remaining missing numeric values with group-wise median.
+        Handle missing values for proteomics data:
+        1. Drop columns that are all-NaN
+        2. Group-wise median imputation (assumes MAR within groups)
+        3. Half-minimum fallback for remaining NaNs (if protein missing in entire group)
         """
         df = df.copy()
         feature_cols = [c for c in df.columns if c != group_col]
         # Drop columns that are all-NaN
         all_nan_cols = [c for c in feature_cols if df[c].isna().all()]
         if all_nan_cols:
+            self._log(f"Dropping {len(all_nan_cols)} all-NaN columns")
             df = df.drop(columns=all_nan_cols)
+        
         feature_cols = [c for c in df.columns if c != group_col]
         numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
-        # Group-wise median imputation for numeric columns with missing values
+        
+        n_missing_before = df[numeric_cols].isna().sum().sum()
+        
+        # Step 1: Group-wise median imputation
         for col in numeric_cols:
             if df[col].isna().any():
                 df[col] = df.groupby(group_col)[col].transform(lambda x: x.fillna(x.median()))
+        
+        n_after_group = df[numeric_cols].isna().sum().sum()
+        n_filled_group = n_missing_before - n_after_group
+        if n_filled_group > 0:
+            self._log(f"Group-wise median imputed {n_filled_group} values")
+        
+        # Step 2: Half-minimum fallback for remaining NaNs
+        # (occurs when protein is missing in ALL samples of a group)
+        if n_after_group > 0:
+            for col in numeric_cols:
+                if df[col].isna().any():
+                    positive_vals = df[col][df[col] > 0]
+                    if len(positive_vals) > 0:
+                        half_min = positive_vals.min() / 2
+                    else:
+                        half_min = 1e-10
+                    df[col] = df[col].fillna(half_min)
+            self._log(f"Half-minimum fallback filled {n_after_group} remaining values")
+        
         return df
