@@ -3,6 +3,7 @@
 A comprehensive, **reusable Python framework** for analyzing and integrating multi-omics datasets. While demonstrated here with banana ripening data, the framework is designed to work with **any multi-omics study**.
 
 > **📖 Start here**
+> - [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — **run your own dataset**: a plain-language decision guide (grouping, NaNs, transforms, method choice) with the code for each option. Written to be reproducible without AI.
 > - [docs/TUTORIAL.md](docs/TUTORIAL.md) — install, **verify it yourself**, and run a grouping-aware analysis end to end.
 > - [docs/ASSUMPTIONS_AND_CHOICES.md](docs/ASSUMPTIONS_AND_CHOICES.md) — every methodological choice + rationale, for review and publication.
 > - [CONSOLIDATION_PLAN.md](CONSOLIDATION_PLAN.md) — architecture and roadmap.
