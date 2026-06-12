@@ -10,5 +10,26 @@ from . import preprocessing
 from . import methods
 from . import workflows
 from . import utils
+from . import core
+from . import validation
 
-__all__ = ['preprocessing', 'methods', 'workflows', 'utils']
+# --- Single-package API: the canonical foundation is importable directly -----
+from .core import (
+    OmicsDataset,
+    Block,
+    TargetSpec,
+    parse_bioreactor_ids,
+    parse_delimited,
+)
+from .preprocessing import Preprocessor, Profile, DEFAULT_PROFILES
+from .methods.base import BaseMethod
+
+__all__ = [
+    # subpackages
+    'preprocessing', 'methods', 'workflows', 'utils', 'core', 'validation',
+    # canonical foundation
+    'OmicsDataset', 'Block', 'TargetSpec',
+    'parse_bioreactor_ids', 'parse_delimited',
+    'Preprocessor', 'Profile', 'DEFAULT_PROFILES',
+    'BaseMethod',
+]
