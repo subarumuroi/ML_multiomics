@@ -272,6 +272,22 @@ Each step is its own commit (or small series), verified before the next.
 - `spectronaut.R` is proteomics INGESTION (parsing Spectronaut report format),
   not normalization — handled in the loader/ingestion layer, not the profiles.
 
+### Cross-check results (vs lab's actual code; tests/crosscheck/)
+- Python primitives are numerically IDENTICAL to both R and Julia wherever the
+  two lab tools agree: zscore (complete), log10, metaboanalyst — all 0 / 1e-15.
+- **z-score on missing data — RESOLVED:** R propagates NaN over the whole feature
+  (no na.rm); Julia + Python skip NaN. Python matches Julia exactly (diff 0.0).
+  Skip-NaN is CANONICAL: it is required for MOFA (which gets z-scored-not-imputed
+  data); R's behavior would make any partially-missing feature all-NaN. The lab's
+  own R and Julia tools disagree here — we follow Julia.
+- **log2 default — DECISION:** default proteomics transform = `log2(x+1)`
+  (mofa_prep convention, what the user's validated pipeline uses, zero-safe).
+  IdeaBio.jl uses plain `log2(x)` (zeros -> missing). Cross-check confirmed the
+  ONLY difference is the +1 pseudocount (plain log2 matches Julia at 0.0).
+  Plain log2 remains available as a profile option. (Flag: flip the default with
+  one line if lab parity is preferred over zero-safety.)
+- imputePCA-per-group still unported (Task #26).
+
 ### Reporting — addresses "hard to interpret/explain"
 - Effect-size + CI first; p-values secondary and always reported WITH the
   achievable resolution given n (e.g. "6 bioreactors → finest group-permutation
