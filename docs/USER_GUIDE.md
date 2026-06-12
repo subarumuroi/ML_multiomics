@@ -258,8 +258,8 @@ ds.set_target("yield", type="continuous", values=yield_series)
 | Predict an ordered category | ordinal regression | ordinal |
 | Regularized linear prediction (small n) | LASSO / ElasticNet | continuous |
 
-> Currently implemented: Random Forest. Others are being ported onto the same
-> interface; the patterns below apply to all of them.
+> Currently implemented: Random Forest and sparse PLS-DA. Others are being
+> ported onto the same interface; the patterns below apply to all of them.
 
 ---
 

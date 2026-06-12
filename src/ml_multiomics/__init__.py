@@ -23,7 +23,7 @@ from .core import (
 )
 from .preprocessing import Preprocessor, Profile, DEFAULT_PROFILES
 from .methods.base import BaseMethod
-from .methods.supervised import RandomForest
+from .methods.supervised import RandomForest, SparsePLSDA
 
 __all__ = [
     # subpackages

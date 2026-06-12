@@ -28,7 +28,7 @@ if str(SRC) not in sys.path:
 
 from ml_multiomics.core import OmicsDataset, parse_delimited
 from ml_multiomics.preprocessing import Preprocessor
-from ml_multiomics.methods import RandomForest
+from ml_multiomics.methods import RandomForest, SparsePLSDA
 
 BANANA = ROOT / "data"
 
@@ -103,10 +103,38 @@ def test_rf_missingness_gate():
     check(rf._fitted, "RF fit succeeds on data with NaN (imputed just-in-time)")
 
 
+def test_splsda_banana():
+    print("\n=== SparsePLSDA classification + stability (banana) ===")
+    df = pd.read_csv(BANANA / "badata-proteomics-imputed.csv").set_index("Sample")
+    df = df.drop(columns=[c for c in ("Groups",) if c in df.columns])
+    ds = OmicsDataset(name="banana")
+    ds.add_block("proteomics", df, omics_type="proteomics")
+    ds.set_sample_metadata(parse_delimited(df.index, sep="-", names=("stage", "replicate")))
+    Preprocessor().run(ds)
+
+    X = ds.get("proteomics")
+    y = ds.sample_meta["stage"].to_numpy()
+    groups = np.arange(len(y))
+
+    sp = SparsePLSDA(n_components=2, keepX=20).fit(X, y, target_type="nominal")
+    vip = sp.vip()
+    check(len(vip) == X.shape[1], f"VIP covers all {X.shape[1]} features")
+
+    cv = sp.cross_validate(X, y, groups=groups)
+    check(0.0 <= cv["accuracy"] <= 1.0, f"grouped-CV accuracy in [0,1]: {cv['accuracy']:.3f}")
+
+    stab = sp.stability_selection(X, y, groups=groups, n_bootstrap=10, seed=0)
+    check(stab["selection_frequency"].between(0, 1).all(),
+          "stability frequencies in [0,1]")
+    n_selected = int((stab["selection_frequency"] > 0).sum())
+    check(n_selected > 0, f"sparse selection picks features ({n_selected} ever-selected)")
+
+
 def main():
     test_rf_classification_banana()
     test_rf_regression_synthetic()
     test_rf_missingness_gate()
+    test_splsda_banana()
     print("\n" + "=" * 60)
     if _failures:
         print(f"{FAIL} {len(_failures)} check(s) failed:")
