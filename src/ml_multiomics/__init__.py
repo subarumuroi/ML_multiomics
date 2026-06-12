@@ -23,8 +23,8 @@ from .core import (
 )
 from .preprocessing import Preprocessor, Profile, DEFAULT_PROFILES
 from .methods.base import BaseMethod
-from .methods.supervised import RandomForest, SparsePLSDA, DIABLO
-from .methods.unsupervised import WGCNA
+from .methods.supervised import RandomForest, SparsePLSDA, DIABLO, Lasso, ElasticNet
+from .methods.unsupervised import WGCNA, NMF
 
 __all__ = [
     # subpackages
@@ -33,5 +33,6 @@ __all__ = [
     'OmicsDataset', 'Block', 'TargetSpec',
     'parse_bioreactor_ids', 'parse_delimited',
     'Preprocessor', 'Profile', 'DEFAULT_PROFILES',
-    'BaseMethod', 'RandomForest', 'SparsePLSDA', 'DIABLO', 'WGCNA',
+    'BaseMethod', 'RandomForest', 'SparsePLSDA', 'DIABLO',
+    'Lasso', 'ElasticNet', 'WGCNA', 'NMF',
 ]

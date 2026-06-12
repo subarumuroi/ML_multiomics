@@ -9,5 +9,6 @@ OmicsDataset as a new block — the "reduce -> predict" pattern for p >> n data.
 """
 
 from .wgcna import WGCNA
+from .nmf import NMF
 
-__all__ = ["WGCNA"]
+__all__ = ["WGCNA", "NMF"]

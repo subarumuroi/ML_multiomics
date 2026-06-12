@@ -195,11 +195,13 @@ code (or reproducing exact function bodies) and diffing, not by reading it.
 - Just-in-time imputation currently uses whole-matrix column statistics
   (matching the lab's impute-then-analyse flow); strict fold-wise imputation
   inside CV is a possible future refinement.
-- Method port in progress: Random Forest (classification + regression), sparse
-  PLS-DA (with bootstrap stability selection), DIABLO (multi-block integration),
-  and WGCNA (co-abundance modules + dimensionality reduction) are done and
-  verified; ordinal regression (needs `mord`), and LASSO/ElasticNet + NMF are
-  queued. Unsupervised "reducers" (WGCNA; NMF/PCA/MOFA to follow) expose a
-  reduced samples x factor matrix for the reduce->predict pattern on p >> n data.
+- Method port: Random Forest (classification + regression), sparse PLS-DA (with
+  bootstrap stability selection), DIABLO (multi-block integration), WGCNA
+  (co-abundance modules + reduction), LASSO/ElasticNet (regularized linear), and
+  NMF (parts-based reduction) are done and verified. Queued: ordinal regression
+  (needs `mord`) and MOFA (lifted from `ml_psi_mofa`). Unsupervised "reducers"
+  (WGCNA, NMF; PCA/MOFA to follow) expose a reduced samples x factor matrix for
+  the reduce->predict pattern on p >> n data. NMF requires non-negative input
+  (z-scored data is rejected) — preprocess with normalize='none'.
 - MOFA core is to be lifted from `ml_psi_mofa` into the library so all algorithms
   share one import surface.

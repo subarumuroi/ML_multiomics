@@ -3,5 +3,7 @@
 from .random_forest import RandomForest
 from .plsda import SparsePLSDA
 from .diablo import DIABLO
+from .linear import RegularizedLinear, Lasso, ElasticNet
 
-__all__ = ["RandomForest", "SparsePLSDA", "DIABLO"]
+__all__ = ["RandomForest", "SparsePLSDA", "DIABLO",
+           "RegularizedLinear", "Lasso", "ElasticNet"]

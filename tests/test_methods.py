@@ -28,7 +28,8 @@ if str(SRC) not in sys.path:
 
 from ml_multiomics.core import OmicsDataset, parse_delimited
 from ml_multiomics.preprocessing import Preprocessor
-from ml_multiomics.methods import RandomForest, SparsePLSDA, DIABLO, WGCNA
+from ml_multiomics.methods import RandomForest, SparsePLSDA, DIABLO, WGCNA, NMF, Lasso, ElasticNet
+from ml_multiomics.preprocessing import Profile
 
 BANANA = ROOT / "data"
 
@@ -192,6 +193,60 @@ def test_wgcna_reduce_then_predict():
         print("  (too few modules at n=12 to chain into RF; reduction still produced)")
 
 
+def test_linear_models_synthetic():
+    print("\n=== Lasso / ElasticNet (synthetic) ===")
+    rng = np.random.default_rng(0)
+    n_groups, per = 10, 2
+    n = n_groups * per
+    X = pd.DataFrame(rng.normal(size=(n, 12)), columns=[f"f{i}" for i in range(12)])
+    groups = np.repeat(np.arange(n_groups), per)
+    y = 2.5 * X["f0"].to_numpy() - 1.5 * X["f1"].to_numpy() + rng.normal(scale=0.3, size=n)
+
+    las = Lasso(alpha=0.1).fit(X, y, target_type="continuous")
+    check(las.task_ == "regression", "Lasso auto-resolves to regression")
+    coef = las.coefficients()
+    check((coef["coef"] == 0).any(), "LASSO produces sparse (some zero) coefficients")
+    cv = las.cross_validate(X, y, groups=groups, target_type="continuous")
+    check("r2" in cv, f"Lasso grouped-CV r2 = {cv['r2']:.2f}")
+
+    en = ElasticNet(alpha=0.1, l1_ratio=0.5).fit(X, y, target_type="continuous")
+    cv2 = en.cross_validate(X, y, groups=groups, target_type="continuous")
+    check("r2" in cv2, f"ElasticNet grouped-CV r2 = {cv2['r2']:.2f}")
+
+
+def test_nmf_reduce_then_predict():
+    print("\n=== NMF as dimensionality reduction -> RandomForest ===")
+    df = pd.read_csv(BANANA / "badata-proteomics-imputed.csv").set_index("Sample")
+    df = df.drop(columns=[c for c in ("Groups",) if c in df.columns])
+    ds = OmicsDataset(name="banana")
+    ds.add_block("proteomics", df, omics_type="proteomics")
+    ds.set_sample_metadata(parse_delimited(df.index, sep="-", names=("stage", "replicate")))
+    # NMF needs non-negative input: transform but DON'T z-score
+    Preprocessor(profile=Profile(transform="log2", normalize="none")).run(ds)
+
+    X = ds.get("proteomics")
+    y = ds.sample_meta["stage"].to_numpy()
+
+    # z-scored data would be rejected:
+    try:
+        NMF(n_components=5).fit(X - X.mean(), y)  # introduce negatives
+        rejected = False
+    except ValueError:
+        rejected = True
+    check(rejected, "NMF rejects negative (z-scored) input with a clear error")
+
+    nmf = NMF(n_components=5).fit(X, y)
+    scores = nmf.reduce()
+    check(scores.shape == (X.shape[0], 5), "NMF reduce() -> samples x 5 factors")
+    check(nmf.loadings().shape[1] == 5, "NMF loadings have 5 factors")
+
+    groups = np.arange(len(y))
+    rf = RandomForest(n_estimators=100).fit(scores, y, target_type="nominal")
+    cv = rf.cross_validate(scores, y, groups=groups, target_type="nominal")
+    check(0.0 <= cv["accuracy"] <= 1.0,
+          f"reduce->predict: RF on NMF factors, grouped-CV acc {cv['accuracy']:.3f}")
+
+
 def main():
     test_rf_classification_banana()
     test_rf_regression_synthetic()
@@ -199,6 +254,8 @@ def main():
     test_splsda_banana()
     test_diablo_banana()
     test_wgcna_reduce_then_predict()
+    test_linear_models_synthetic()
+    test_nmf_reduce_then_predict()
     print("\n" + "=" * 60)
     if _failures:
         print(f"{FAIL} {len(_failures)} check(s) failed:")

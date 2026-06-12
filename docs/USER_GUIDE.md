@@ -258,9 +258,10 @@ ds.set_target("yield", type="continuous", values=yield_series)
 | Predict an ordered category | ordinal regression | ordinal |
 | Regularized linear prediction (small n) | LASSO / ElasticNet | continuous |
 
-> Currently implemented: Random Forest, sparse PLS-DA, DIABLO (multi-block), and
-> WGCNA (modules + dimensionality reduction). Others are being ported onto the
-> same interface; the patterns below apply to all of them.
+> Currently implemented: Random Forest, sparse PLS-DA, DIABLO (multi-block),
+> WGCNA (modules + reduction), LASSO / ElasticNet (regularized linear), and NMF
+> (parts-based reduction). Others are being ported onto the same interface; the
+> patterns below apply to all of them.
 
 ### Dimensionality reduction (the "reduce → predict" pattern)
 
@@ -286,9 +287,11 @@ print(rf.cross_validate(reduced, y, groups=groups, target_type="nominal")["accur
 ```
 
 This is exactly how the MOFA factor-yield workflow operates (reduce to factors,
-then regress yield on factors). NMF's `W` scores and MOFA/PCA factor scores will
-play the same role once ported. You can also add `reduced` back to an
-OmicsDataset as a new block.
+then regress yield on factors). **NMF** does the same — `NMF().fit(X).reduce()`
+returns its `W` scores (samples × factors); note NMF needs non-negative input, so
+preprocess with `normalize="none"` (z-scored data is rejected). MOFA/PCA factor
+scores will follow. You can also add `reduced` back to an OmicsDataset as a new
+block.
 
 ---
 
