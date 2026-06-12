@@ -2,6 +2,17 @@
 
 A comprehensive, **reusable Python framework** for analyzing and integrating multi-omics datasets. While demonstrated here with banana ripening data, the framework is designed to work with **any multi-omics study**.
 
+> **📖 Start here**
+> - [docs/TUTORIAL.md](docs/TUTORIAL.md) — install, **verify it yourself**, and run a grouping-aware analysis end to end.
+> - [docs/ASSUMPTIONS_AND_CHOICES.md](docs/ASSUMPTIONS_AND_CHOICES.md) — every methodological choice + rationale, for review and publication.
+> - [CONSOLIDATION_PLAN.md](CONSOLIDATION_PLAN.md) — architecture and roadmap.
+> - [tests/crosscheck/README.md](tests/crosscheck/README.md) — numerical parity vs the lab's R/Julia code ([latest results](tests/crosscheck/RESULTS.md)).
+>
+> **Consolidation in progress.** This repo is being unified into the single
+> multi-omics ML library (one import surface: `from ml_multiomics import ...`).
+> The new canonical foundation is `core/` + `preprocessing/` + `methods/` +
+> `validation/`; the sections below describe methods being migrated onto it.
+
 ## Why This Framework?
 
 - **Plug-and-play with your data**: Bring any combination of omics layers (metabolomics, proteomics, transcriptomics, lipidomics, volatiles, etc.)

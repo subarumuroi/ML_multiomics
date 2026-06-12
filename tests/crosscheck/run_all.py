@@ -20,6 +20,7 @@ TESTS = HERE.parent
 
 SUITE = [
     ("Scaffold smoke test (structural)", TESTS / "test_scaffold.py"),
+    ("Method smoke tests", TESTS / "test_methods.py"),
     ("Cross-check vs IdeaBio.R", HERE / "run_crosscheck_r.py"),
     ("Cross-check vs IdeaBio.jl", HERE / "run_crosscheck_jl.py"),
     ("imputePCA parity vs missMDA", HERE / "run_crosscheck_imputepca.py"),

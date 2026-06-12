@@ -1,0 +1,120 @@
+"""
+test_methods.py
+===============
+Smoke test for ported ML methods on the BaseMethod foundation. Runs as a plain
+script (no pytest needed):
+
+    ./venv/Scripts/python tests/test_methods.py
+
+Currently covers RandomForest (classification + regression), exercising:
+  * the handles_missing gate (fit on data with NaN -> imputed JIT)
+  * Gini + permutation importance
+  * grouping-aware leave-one-group-out CV (classification & regression)
+  * group-level permutation test + honest resolution reporting
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from ml_multiomics.core import OmicsDataset, parse_delimited
+from ml_multiomics.preprocessing import Preprocessor
+from ml_multiomics.methods import RandomForest
+
+BANANA = ROOT / "data"
+
+PASS, FAIL = "[PASS]", "[FAIL]"
+_failures = []
+
+
+def check(cond, msg):
+    print(f"  {PASS if cond else FAIL} {msg}")
+    if not cond:
+        _failures.append(msg)
+
+
+def test_rf_classification_banana():
+    print("\n=== RandomForest classification (banana proteomics) ===")
+    df = pd.read_csv(BANANA / "badata-proteomics-imputed.csv").set_index("Sample")
+    df = df.drop(columns=[c for c in ("Groups",) if c in df.columns])
+    ds = OmicsDataset(name="banana")
+    ds.add_block("proteomics", df, omics_type="proteomics")
+    meta = parse_delimited(df.index, sep="-", names=("stage", "replicate"))
+    ds.set_sample_metadata(meta)
+    Preprocessor().run(ds)
+
+    X = ds.get("proteomics")
+    y = ds.sample_meta["stage"].to_numpy()
+    groups = np.arange(len(y))  # each banana replicate is its own independent unit (LOO)
+
+    rf = RandomForest(n_estimators=200).fit(X, y, target_type="nominal")
+    check(rf.task_ == "classification", "auto-resolved task = classification")
+    imp = rf.importances()
+    check(len(imp) == X.shape[1], f"importances cover all {X.shape[1]} features")
+
+    cv = rf.cross_validate(X, y, groups=groups, target_type="nominal")
+    check(0.0 <= cv["accuracy"] <= 1.0, f"grouped-CV accuracy in [0,1]: {cv['accuracy']:.3f}")
+    check("balanced_accuracy" in cv, "balanced accuracy reported")
+
+
+def test_rf_regression_synthetic():
+    print("\n=== RandomForest regression (synthetic, grouped) ===")
+    rng = np.random.default_rng(0)
+    n_groups, per = 10, 2
+    n = n_groups * per
+    X = rng.normal(size=(n, 8))
+    # signal in feature 0; group-structured noise
+    groups = np.repeat(np.arange(n_groups), per)
+    y = 3.0 * X[:, 0] + rng.normal(scale=0.3, size=n)
+    Xdf = pd.DataFrame(X, columns=[f"f{i}" for i in range(8)])
+
+    rf = RandomForest(n_estimators=200).fit(Xdf, y, target_type="continuous")
+    check(rf.task_ == "regression", "auto-resolved task = regression")
+
+    cv = rf.cross_validate(Xdf, y, groups=groups, target_type="continuous")
+    check(cv["task"] == "regression" and "r2" in cv and "rmse" in cv,
+          f"regression CV returns r2/rmse (r2={cv['r2']:.2f})")
+
+    pt = rf.permutation_test(Xdf, y, groups=groups, n_permutations=50, seed=1,
+                             target_type="continuous")
+    check(0.0 < pt["p_value"] <= 1.0, f"group permutation p in (0,1]: {pt['p_value']:.3f}")
+    check("resolution" in pt and pt["resolution"]["n_groups"] == n_groups,
+          "permutation resolution reports #groups")
+
+
+def test_rf_missingness_gate():
+    print("\n=== RandomForest handles_missing gate ===")
+    rng = np.random.default_rng(2)
+    X = pd.DataFrame(rng.normal(loc=10, scale=2, size=(12, 5)),
+                     columns=[f"f{i}" for i in range(5)])
+    X.iloc[3, 1] = np.nan
+    X.iloc[7, 4] = np.nan
+    y = np.array(["a", "b"] * 6)
+    rf = RandomForest(n_estimators=50).fit(X, y, target_type="nominal")
+    check(rf._fitted, "RF fit succeeds on data with NaN (imputed just-in-time)")
+
+
+def main():
+    test_rf_classification_banana()
+    test_rf_regression_synthetic()
+    test_rf_missingness_gate()
+    print("\n" + "=" * 60)
+    if _failures:
+        print(f"{FAIL} {len(_failures)} check(s) failed:")
+        for f in _failures:
+            print("   -", f)
+        sys.exit(1)
+    print(f"{PASS} all method smoke checks passed")
+
+
+if __name__ == "__main__":
+    main()
