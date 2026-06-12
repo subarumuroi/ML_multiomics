@@ -23,7 +23,7 @@ from .core import (
 )
 from .preprocessing import Preprocessor, Profile, DEFAULT_PROFILES
 from .methods.base import BaseMethod
-from .methods.supervised import RandomForest, SparsePLSDA
+from .methods.supervised import RandomForest, SparsePLSDA, DIABLO
 
 __all__ = [
     # subpackages
@@ -32,5 +32,5 @@ __all__ = [
     'OmicsDataset', 'Block', 'TargetSpec',
     'parse_bioreactor_ids', 'parse_delimited',
     'Preprocessor', 'Profile', 'DEFAULT_PROFILES',
-    'BaseMethod', 'RandomForest',
+    'BaseMethod', 'RandomForest', 'SparsePLSDA', 'DIABLO',
 ]

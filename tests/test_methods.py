@@ -28,7 +28,7 @@ if str(SRC) not in sys.path:
 
 from ml_multiomics.core import OmicsDataset, parse_delimited
 from ml_multiomics.preprocessing import Preprocessor
-from ml_multiomics.methods import RandomForest, SparsePLSDA
+from ml_multiomics.methods import RandomForest, SparsePLSDA, DIABLO
 
 BANANA = ROOT / "data"
 
@@ -130,11 +130,42 @@ def test_splsda_banana():
     check(n_selected > 0, f"sparse selection picks features ({n_selected} ever-selected)")
 
 
+def test_diablo_banana():
+    print("\n=== DIABLO multi-block (banana: 3 omics) ===")
+    files = {
+        "proteomics": ("badata-proteomics-imputed.csv", "proteomics"),
+        "metabolomics": ("badata-metabolomics.csv", "metabolomics"),
+        "amino_acids": ("badata-amino-acids.csv", "metabolomics"),
+    }
+    ds = OmicsDataset(name="banana")
+    for blk, (fn, otype) in files.items():
+        df = pd.read_csv(BANANA / fn).set_index("Sample")
+        df = df.drop(columns=[c for c in ("Groups",) if c in df.columns])
+        ds.add_block(blk, df, omics_type=otype)
+    ds.align()
+    ds.set_sample_metadata(parse_delimited(ds.common_samples(), sep="-", names=("stage", "replicate")))
+    Preprocessor().run(ds)
+
+    y = ds.sample_meta["stage"].to_numpy()
+    groups = np.arange(len(y))
+    keepX = {"proteomics": 20, "metabolomics": 10, "amino_acids": 10}
+
+    dia = DIABLO(n_components=2, keepX=keepX, design=0.1).fit(ds, y, target_type="nominal")
+    corr = dia.block_correlations()
+    check(corr.shape == (3, 3), "block-correlation matrix is 3x3")
+    av = dia.all_vip()
+    check(set(av["block"].unique()) == set(files), "VIP returned for all 3 blocks")
+
+    cv = dia.cross_validate(ds, y, groups=groups)
+    check(0.0 <= cv["accuracy"] <= 1.0, f"grouped-CV accuracy in [0,1]: {cv['accuracy']:.3f}")
+
+
 def main():
     test_rf_classification_banana()
     test_rf_regression_synthetic()
     test_rf_missingness_gate()
     test_splsda_banana()
+    test_diablo_banana()
     print("\n" + "=" * 60)
     if _failures:
         print(f"{FAIL} {len(_failures)} check(s) failed:")

@@ -195,9 +195,9 @@ code (or reproducing exact function bodies) and diffing, not by reading it.
 - Just-in-time imputation currently uses whole-matrix column statistics
   (matching the lab's impute-then-analyse flow); strict fold-wise imputation
   inside CV is a possible future refinement.
-- Method port in progress: Random Forest (classification + regression) and
-  sparse PLS-DA (with bootstrap stability selection) are done and verified;
-  native DIABLO, ordinal regression (needs `mord`), WGCNA, and LASSO/ElasticNet +
-  NMF are queued.
+- Method port in progress: Random Forest (classification + regression), sparse
+  PLS-DA (with bootstrap stability selection), and DIABLO (multi-block
+  integration) are done and verified; ordinal regression (needs `mord`), WGCNA,
+  and LASSO/ElasticNet + NMF are queued.
 - MOFA core is to be lifted from `ml_psi_mofa` into the library so all algorithms
   share one import surface.

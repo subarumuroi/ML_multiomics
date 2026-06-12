@@ -5,11 +5,11 @@
 
 from .base import BaseMethod
 from . import supervised
-from .supervised import RandomForest, SparsePLSDA
+from .supervised import RandomForest, SparsePLSDA, DIABLO
 
 # legacy method namespaces (being consolidated onto BaseMethod)
 from . import single_omics
 from . import multi_omics
 
-__all__ = ['BaseMethod', 'supervised', 'RandomForest', 'SparsePLSDA',
+__all__ = ['BaseMethod', 'supervised', 'RandomForest', 'SparsePLSDA', 'DIABLO',
            'single_omics', 'multi_omics']
