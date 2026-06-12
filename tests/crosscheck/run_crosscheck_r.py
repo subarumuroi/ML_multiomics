@@ -112,11 +112,9 @@ def main():
     rows.append(("metaboanalyst impute", "MATCH" if d < 1e-9 else "DIVERGE", _fmt(d),
                  "0.2 x min(positive) per feature"))
 
-    # 5. imputePCA per group -> Python has NO equivalent yet (GAP)
-    ip = HERE / "r_imputepca.csv"
-    rows.append(("imputePCA-by-group", "GAP", "R-only",
-                 "R default imputation; not yet ported to Python"
-                 + ("" if ip.exists() else " (R run also failed)")))
+    # 5. imputePCA per group -> covered by the dedicated parity harness
+    rows.append(("imputePCA-by-group", "SEE imputepca harness", "->",
+                 "machine-precision parity verified in run_crosscheck_imputepca.py"))
 
     # --- report ---
     print("\n" + "=" * 92)
