@@ -28,7 +28,7 @@ if str(SRC) not in sys.path:
 
 from ml_multiomics.core import OmicsDataset, parse_delimited
 from ml_multiomics.preprocessing import Preprocessor
-from ml_multiomics.methods import RandomForest, SparsePLSDA, DIABLO
+from ml_multiomics.methods import RandomForest, SparsePLSDA, DIABLO, WGCNA
 
 BANANA = ROOT / "data"
 
@@ -160,12 +160,45 @@ def test_diablo_banana():
     check(0.0 <= cv["accuracy"] <= 1.0, f"grouped-CV accuracy in [0,1]: {cv['accuracy']:.3f}")
 
 
+def test_wgcna_reduce_then_predict():
+    print("\n=== WGCNA as dimensionality reduction -> RandomForest ===")
+    df = pd.read_csv(BANANA / "badata-aromatics.csv").set_index("Sample")
+    df = df.drop(columns=[c for c in ("Groups",) if c in df.columns])
+    ds = OmicsDataset(name="banana")
+    ds.add_block("aromatics", df, omics_type="volatiles")
+    ds.set_sample_metadata(parse_delimited(df.index, sep="-", names=("stage", "replicate")))
+    Preprocessor().run(ds)
+
+    X = ds.get("aromatics")
+    y = ds.sample_meta["stage"].to_numpy()
+
+    wg = WGCNA(corr_method="spearman").fit(X, y, target_type="ordinal")
+    mods = wg.modules()
+    check(len(mods) == X.shape[1], f"module assignment covers all {X.shape[1]} features")
+
+    reduced = wg.reduce(strategy="eigengenes_and_hubs")
+    check(reduced.shape[0] == X.shape[0], "reduced matrix keeps all samples")
+    check(reduced.shape[1] <= X.shape[1], "reduced matrix has <= original feature count")
+    print(f"  reduced: {X.shape[1]} features -> {reduced.shape[1]} columns "
+          f"({list(reduced.columns)[:4]}{'...' if reduced.shape[1] > 4 else ''})")
+
+    if reduced.shape[1] >= 2:
+        groups = np.arange(len(y))
+        rf = RandomForest(n_estimators=100).fit(reduced, y, target_type="nominal")
+        cv = rf.cross_validate(reduced, y, groups=groups, target_type="nominal")
+        check(0.0 <= cv["accuracy"] <= 1.0,
+              f"reduce->predict: RF on WGCNA factors, grouped-CV acc {cv['accuracy']:.3f}")
+    else:
+        print("  (too few modules at n=12 to chain into RF; reduction still produced)")
+
+
 def main():
     test_rf_classification_banana()
     test_rf_regression_synthetic()
     test_rf_missingness_gate()
     test_splsda_banana()
     test_diablo_banana()
+    test_wgcna_reduce_then_predict()
     print("\n" + "=" * 60)
     if _failures:
         print(f"{FAIL} {len(_failures)} check(s) failed:")

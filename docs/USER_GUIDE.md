@@ -258,9 +258,37 @@ ds.set_target("yield", type="continuous", values=yield_series)
 | Predict an ordered category | ordinal regression | ordinal |
 | Regularized linear prediction (small n) | LASSO / ElasticNet | continuous |
 
-> Currently implemented: Random Forest, sparse PLS-DA, and DIABLO (multi-block).
-> Others are being ported onto the same interface; the patterns below apply to
-> all of them.
+> Currently implemented: Random Forest, sparse PLS-DA, DIABLO (multi-block), and
+> WGCNA (modules + dimensionality reduction). Others are being ported onto the
+> same interface; the patterns below apply to all of them.
+
+### Dimensionality reduction (the "reduce → predict" pattern)
+
+When you have far more features than samples (p ≫ n — almost always, in omics),
+it is often better to **reduce first, then predict**. Unsupervised "reducer"
+methods (WGCNA now; NMF, PCA, MOFA to follow) collapse thousands of features
+into a handful of factors/modules, and that small matrix feeds a supervised
+method:
+
+```python
+from ml_multiomics import WGCNA, RandomForest
+import numpy as np
+
+# WGCNA collapses correlated features into module eigengenes (no leakage:
+# modules are built without the labels)
+wg = WGCNA(corr_method="spearman").fit(X, y, target_type="ordinal")
+reduced = wg.reduce(strategy="eigengenes_and_hubs")   # samples x (modules + hubs)
+
+# now predict on the small reduced matrix
+groups = np.arange(len(y))
+rf = RandomForest().fit(reduced, y, target_type="nominal")
+print(rf.cross_validate(reduced, y, groups=groups, target_type="nominal")["accuracy"])
+```
+
+This is exactly how the MOFA factor-yield workflow operates (reduce to factors,
+then regress yield on factors). NMF's `W` scores and MOFA/PCA factor scores will
+play the same role once ported. You can also add `reduced` back to an
+OmicsDataset as a new block.
 
 ---
 

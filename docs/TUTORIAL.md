@@ -137,7 +137,7 @@ docs/
 
 Implemented & verified: data model, missing-aware preprocessing (lab-parity),
 grouping-aware resampling, Random Forest (classification + regression), sparse
-PLS-DA (with stability selection), DIABLO (multi-block integration). Queued:
-ordinal regression, WGCNA, LASSO/ElasticNet, NMF, MOFA (lifted from
-`ml_psi_mofa`), and an end-to-end Quarto report. See
+PLS-DA (with stability selection), DIABLO (multi-block integration), WGCNA
+(modules + dimensionality reduction). Queued: ordinal regression, LASSO/ElasticNet,
+NMF, MOFA (lifted from `ml_psi_mofa`), and an end-to-end Quarto report. See
 [../CONSOLIDATION_PLAN.md](../CONSOLIDATION_PLAN.md).
