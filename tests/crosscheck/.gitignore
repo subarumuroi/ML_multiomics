@@ -5,3 +5,5 @@ r_*.csv
 x_*_plain.csv
 jl_*.csv
 ipca_*.csv
+de_x.csv
+de_groups.csv
