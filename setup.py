@@ -51,6 +51,7 @@ setup(
     extras_require={
         'ordinal': ['mord>=0.6'],     # ordinal regression (Ordinal method)
         'shap': ['shap>=0.40'],       # SHAP feature importance (RandomForest.shap_importance)
+        'report': ['ipykernel', 'nbclient', 'nbformat', 'jupyter_client', 'pyyaml'],  # Quarto rendering
         'dev': [
             'pytest>=6.0',
             'pytest-cov>=2.0',

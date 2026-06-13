@@ -1,0 +1,160 @@
+---
+title: "Part 3 — Omics & Machine Learning"
+subtitle: "Predicting metabolite yield from phase-3 proteomics"
+author: "ml_multiomics"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    code-fold: true
+    embed-resources: true
+jupyter: python3
+execute:
+  warning: false
+  cache: false
+---
+
+This report extends the IDEA Bio fermentation report (Parts 1–2) with the omics
++ machine-learning analysis that the standard template stubs out. It predicts a
+chosen metabolite **yield** from phase-3 **proteomics** using the `ml_multiomics`
+library, and compares methods under leakage-free (per-bioreactor) cross-validation.
+
+```{python}
+#| echo: false
+#| output: false
+#| tags: [parameters]
+
+# The target compound. Defaults to psilocybin; swap to any compound in the
+# yields file (see "Try another target" at the end). Examples:
+#   psilocybin_ext, tryptamine_ext, psilocin_ext, Baeocystine_ext, serotonin_ext
+compound = "psilocybin_ext"
+```
+
+```{python}
+#| echo: false
+#| output: false
+import sys
+from pathlib import Path
+HERE = Path.cwd()
+for cand in (HERE, HERE / "examples" / "psilocybin_report"):
+    if (cand / "analysis.py").exists():
+        sys.path.insert(0, str(cand))
+        break
+import analysis
+import matplotlib.pyplot as plt
+from IPython.display import Markdown
+
+res = analysis.run_yield_analysis(compound)
+```
+
+# Part 3.1 — Overview
+
+```{python}
+#| echo: false
+Markdown(
+    f"- **Target:** `{res['compound']}` yield (over biomass), phase {res['phase']}\n"
+    f"- **Samples:** {res['n_bioreactors']} bioreactors (one independent unit each)\n"
+    f"- **Features:** {res['n_proteins']} proteins (phase-3 average per bioreactor)\n"
+    f"- **Yield:** mean {res['yield_mean']:.3g}, sd {res['yield_std']:.3g}\n"
+    f"- **Conditions:** " + ", ".join(f"{k} (n={v})" for k, v in res['conditions'].items())
+)
+```
+
+This is a classic **low-n, high-p** problem: a few dozen samples versus thousands
+of proteins. The pipeline therefore favours regularization and
+*reduce-then-predict*, and validates by leaving out **whole bioreactors** so no
+run leaks across the train/test split.
+
+# Part 3.2 — Method comparison
+
+Each method predicts the yield under leave-one-bioreactor-out cross-validation.
+`Lasso` and `RandomForest` use all proteins (z-scored); `NMF→RF` and `WGCNA→RF`
+first reduce the proteins to a few factors/modules, then predict.
+
+```{python}
+#| echo: false
+res["comparison"].round(3)
+```
+
+```{python}
+#| echo: false
+comp = res["comparison"]
+fig, ax = plt.subplots(figsize=(6, 3.2))
+ax.barh(comp["method"], comp["r2"], color="#2B6CB0")
+ax.set_xlabel("Cross-validated $R^2$ (higher = better)")
+ax.set_title(f"Predicting {res['compound']} yield")
+ax.axvline(0, color="0.4", lw=0.8)
+ax.invert_yaxis()
+fig.tight_layout()
+plt.show()
+```
+
+```{python}
+#| echo: false
+best = res["comparison"].iloc[0]
+Markdown(
+    f"**Best method:** `{best['method']}` (R² = {best['r2']:.3f}, RMSE = {best['rmse']:.3g}, "
+    f"using {int(best['n_input_features'])} input features). "
+    + ("A reduced representation (a handful of factors) matching or beating the "
+       "full-feature models is the reduce→predict pattern paying off."
+       if "->" in str(best["method"]) else
+       "Here a full-feature model led; the reduced models remain useful for "
+       "interpretation and robustness.")
+)
+```
+
+# Part 3.3 — What drives the prediction
+
+```{python}
+#| echo: false
+Markdown("**RandomForest — top proteins by importance:**")
+```
+
+```{python}
+#| echo: false
+res["top_features"]["RandomForest"].round(4)
+```
+
+```{python}
+#| echo: false
+Markdown("**NMF factor 1 — top protein loadings:**")
+```
+
+```{python}
+#| echo: false
+res["top_features"]["NMF_factor1"].round(4)
+```
+
+# Part 3.4 — How much to trust this
+
+```{python}
+#| echo: false
+r = res["resolution"]
+Markdown(
+    f"- **Sample size:** {res['n_bioreactors']} independent bioreactors. Treat results "
+    f"as **exploratory** and cross-check methods.\n"
+    f"- **Statistical resolution:** with this design the finest achievable "
+    f"permutation p-value is ~{r['finest_two_sided_p']:.2g} — a single p-value "
+    f"cannot go below that floor, so we report effect size (R²) first.\n"
+    f"- **WGCNA:** detected {res['wgcna_n_modules']} module(s); "
+    + ("included above." if res['wgcna_reduced_cols'] >= 2 else
+       "too few co-abundance modules formed at this n/scale to use as a separate "
+       "model (reported for transparency).") + "\n"
+    f"- **No leakage:** every fold left out whole bioreactors; no double-scaling "
+    f"(data scaled once in preprocessing); NMF ran on non-negative log2 data."
+)
+```
+
+# Part 3.5 — Try another target
+
+To rerun for a different metabolite, change the `compound` parameter at the top
+(or render with `-P compound:tryptamine_ext`). Available compounds:
+
+```{python}
+#| echo: false
+Markdown(", ".join(f"`{c}`" for c in analysis.available_compounds()))
+```
+
+Internal metabolites and growth rate can be targeted the same way once added to
+the yields table. The method comparison, top features, and caveats above
+regenerate automatically for whichever target you choose.
