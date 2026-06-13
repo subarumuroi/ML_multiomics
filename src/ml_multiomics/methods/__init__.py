@@ -8,13 +8,8 @@ from . import supervised, unsupervised
 from .supervised import (
     RandomForest, SparsePLSDA, DIABLO, RegularizedLinear, Lasso, ElasticNet, Ordinal,
 )
-from .unsupervised import WGCNA, NMF
-
-# legacy method namespaces (being consolidated onto BaseMethod)
-from . import single_omics
-from . import multi_omics
+from .unsupervised import WGCNA, NMF, PCA
 
 __all__ = ['BaseMethod', 'supervised', 'unsupervised',
            'RandomForest', 'SparsePLSDA', 'DIABLO', 'Lasso', 'ElasticNet',
-           'RegularizedLinear', 'Ordinal', 'WGCNA', 'NMF',
-           'single_omics', 'multi_omics']
+           'RegularizedLinear', 'Ordinal', 'WGCNA', 'NMF', 'PCA']

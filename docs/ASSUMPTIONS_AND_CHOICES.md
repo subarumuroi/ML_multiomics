@@ -225,9 +225,14 @@ conventions, cross-checked vs the actual R (`run_crosscheck_de.py`):
   inside CV is a possible future refinement.
 - Method port: Random Forest (classification + regression), sparse PLS-DA (with
   bootstrap stability selection), DIABLO (multi-block integration), WGCNA
-  (co-abundance modules + reduction), LASSO/ElasticNet (regularized linear), and
-  NMF (parts-based reduction), and Ordinal regression (`mord`; LogisticAT/IT/SE,
-  MinMaxScaler dropped to avoid double-scaling) are done and verified. Queued:
+  (co-abundance modules + reduction), NMF and PCA (reduction), LASSO/ElasticNet
+  (regularized linear), and Ordinal regression (`mord`; LogisticAT/IT/SE,
+  MinMaxScaler dropped to avoid double-scaling) are done and verified. The legacy
+  ml_multiomics preprocessing hierarchy, single_omics/multi_omics method
+  namespaces, workflows/, and utils/ have been removed (dedupe, Task #19) — the
+  package now has one clean surface: core / preprocessing / methods / validation
+  / analysis. The R-backed mixOmics DIABLO was dropped (native pure-Python DIABLO
+  supersedes it; an optional [r] re-add is possible later). Queued:
   MOFA (single-group lift from `ml_psi_mofa`; multiphase stays in that repo while
   in active development). Unsupervised "reducers"
   (WGCNA, NMF; PCA/MOFA to follow) expose a reduced samples x factor matrix for

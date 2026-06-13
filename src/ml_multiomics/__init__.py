@@ -6,11 +6,9 @@
 __version__ = '0.1.0'
 __author__ = 'Subaru Muroi'
 
+from . import core
 from . import preprocessing
 from . import methods
-from . import workflows
-from . import utils
-from . import core
 from . import validation
 from . import analysis
 
@@ -25,15 +23,15 @@ from .core import (
 from .preprocessing import Preprocessor, Profile, DEFAULT_PROFILES
 from .methods.base import BaseMethod
 from .methods.supervised import RandomForest, SparsePLSDA, DIABLO, Lasso, ElasticNet, Ordinal
-from .methods.unsupervised import WGCNA, NMF
+from .methods.unsupervised import WGCNA, NMF, PCA
 
 __all__ = [
     # subpackages
-    'preprocessing', 'methods', 'workflows', 'utils', 'core', 'validation',
+    'core', 'preprocessing', 'methods', 'validation', 'analysis',
     # canonical foundation
     'OmicsDataset', 'Block', 'TargetSpec',
     'parse_bioreactor_ids', 'parse_delimited',
     'Preprocessor', 'Profile', 'DEFAULT_PROFILES',
     'BaseMethod', 'RandomForest', 'SparsePLSDA', 'DIABLO',
-    'Lasso', 'ElasticNet', 'Ordinal', 'WGCNA', 'NMF',
+    'Lasso', 'ElasticNet', 'Ordinal', 'WGCNA', 'NMF', 'PCA',
 ]

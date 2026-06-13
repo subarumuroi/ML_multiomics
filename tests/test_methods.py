@@ -28,7 +28,7 @@ if str(SRC) not in sys.path:
 
 from ml_multiomics.core import OmicsDataset, parse_delimited
 from ml_multiomics.preprocessing import Preprocessor
-from ml_multiomics.methods import RandomForest, SparsePLSDA, DIABLO, WGCNA, NMF, Lasso, ElasticNet, Ordinal
+from ml_multiomics.methods import RandomForest, SparsePLSDA, DIABLO, WGCNA, NMF, PCA, Lasso, ElasticNet, Ordinal
 from ml_multiomics.preprocessing import Profile
 
 BANANA = ROOT / "data"
@@ -272,6 +272,28 @@ def test_ordinal_banana():
     check(cv["mae"] >= 0.0, f"ordinal MAE (ordinal distance) = {cv['mae']:.3f}")
 
 
+def test_pca_reduce_then_predict():
+    print("\n=== PCA as dimensionality reduction -> RandomForest ===")
+    df = pd.read_csv(BANANA / "badata-proteomics-imputed.csv").set_index("Sample")
+    df = df.drop(columns=[c for c in ("Groups",) if c in df.columns])
+    ds = OmicsDataset(name="banana")
+    ds.add_block("proteomics", df, omics_type="proteomics")
+    ds.set_sample_metadata(parse_delimited(df.index, sep="-", names=("stage", "replicate")))
+    Preprocessor().run(ds)
+
+    X = ds.get("proteomics")
+    y = ds.sample_meta["stage"].to_numpy()
+    pca = PCA(n_components=5).fit(X)
+    scores = pca.reduce()
+    check(scores.shape == (X.shape[0], 5), "PCA reduce() -> samples x 5 PCs")
+    check(abs(pca.variance_explained()["cumulative"].iloc[-1]) <= 1.0 + 1e-9,
+          "PCA cumulative variance <= 1")
+    groups = np.arange(len(y))
+    rf = RandomForest(n_estimators=100).fit(scores, y, target_type="nominal")
+    cv = rf.cross_validate(scores, y, groups=groups, target_type="nominal")
+    check(0.0 <= cv["accuracy"] <= 1.0, f"reduce->predict: RF on PCA scores, acc {cv['accuracy']:.3f}")
+
+
 def main():
     test_rf_classification_banana()
     test_rf_regression_synthetic()
@@ -282,6 +304,7 @@ def main():
     test_linear_models_synthetic()
     test_nmf_reduce_then_predict()
     test_ordinal_banana()
+    test_pca_reduce_then_predict()
     print("\n" + "=" * 60)
     if _failures:
         print(f"{FAIL} {len(_failures)} check(s) failed:")
