@@ -41,6 +41,7 @@ def check(cond, msg):
     print(f"  {PASS if cond else FAIL} {msg}")
     if not cond:
         _failures.append(msg)
+    assert cond, msg   # makes each pytest test fail meaningfully on a real error
 
 
 def test_rf_classification_banana():

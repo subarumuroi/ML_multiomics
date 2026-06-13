@@ -50,6 +50,13 @@ captured report:
 venv/Scripts/python tests/crosscheck/run_all.py     # -> 7/7 suites, writes RESULTS.md
 ```
 
+For CI / pure-Python tests (no R/Julia needed), use pytest (cross-checks are
+excluded automatically):
+
+```bash
+venv/Scripts/pip install -e .[dev] && venv/Scripts/python -m pytest    # 16 passed
+```
+
 ## Package layout
 
 ```

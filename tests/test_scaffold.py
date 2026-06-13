@@ -49,9 +49,20 @@ def check(cond: bool, msg: str):
     print(f"  {PASS if cond else FAIL} {msg}")
     if not cond:
         _failures.append(msg)
+    assert cond, msg   # makes each pytest test fail meaningfully on a real error
 
 
 # ---------------------------------------------------------------------------
+def _build_banana_proteomics_ds():
+    """A single-block (proteomics) banana dataset with stage metadata."""
+    df = pd.read_csv(BANANA / "badata-proteomics-imputed.csv")
+    df = df.set_index("Sample").drop(columns=[c for c in ("Groups",) if c in df.columns])
+    ds = OmicsDataset(name="banana")
+    ds.add_block("proteomics", df, omics_type="proteomics")
+    ds.set_sample_metadata(parse_delimited(df.index, sep="-", names=("stage", "replicate")))
+    return ds
+
+
 def test_banana_container_and_alignment():
     print("\n=== Banana: container + align-by-ID intersection ===")
     files = {
@@ -86,12 +97,11 @@ def test_banana_container_and_alignment():
     ds.set_sample_metadata(meta)
     check(set(meta["stage"]) <= {"Green", "Ripe", "Over"},
           f"stages parsed: {sorted(set(meta['stage']))}")
-    return ds
 
 
-def test_banana_preprocessing_preserves_structure(ds):
+def test_banana_preprocessing_preserves_structure():
     print("\n=== Banana: missing-aware preprocessing ===")
-    prot_before = ds.get("proteomics").copy()
+    ds = _build_banana_proteomics_ds()
     Preprocessor().run(ds)
     prot = ds.blocks["proteomics"]
     check(prot.transformed and prot.normalized, "proteomics flagged transformed+normalized")
@@ -166,8 +176,8 @@ def test_psilo_grouping_and_resolution():
 
 
 def main():
-    ds = test_banana_container_and_alignment()
-    test_banana_preprocessing_preserves_structure(ds)
+    test_banana_container_and_alignment()
+    test_banana_preprocessing_preserves_structure()
     test_missingness_gate()
     test_psilo_grouping_and_resolution()
 
