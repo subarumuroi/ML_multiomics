@@ -28,7 +28,7 @@ if str(SRC) not in sys.path:
 
 from ml_multiomics.core import OmicsDataset, parse_delimited
 from ml_multiomics.preprocessing import Preprocessor
-from ml_multiomics.methods import RandomForest, SparsePLSDA, DIABLO, WGCNA, NMF, Lasso, ElasticNet
+from ml_multiomics.methods import RandomForest, SparsePLSDA, DIABLO, WGCNA, NMF, Lasso, ElasticNet, Ordinal
 from ml_multiomics.preprocessing import Profile
 
 BANANA = ROOT / "data"
@@ -247,6 +247,31 @@ def test_nmf_reduce_then_predict():
           f"reduce->predict: RF on NMF factors, grouped-CV acc {cv['accuracy']:.3f}")
 
 
+def test_ordinal_banana():
+    print("\n=== Ordinal regression (banana: Green < Ripe < Overripe) ===")
+    df = pd.read_csv(BANANA / "badata-metabolomics.csv").set_index("Sample")
+    df = df.drop(columns=[c for c in ("Groups",) if c in df.columns])
+    ds = OmicsDataset(name="banana")
+    ds.add_block("metabolomics", df, omics_type="metabolomics")
+    ds.set_sample_metadata(parse_delimited(df.index, sep="-", names=("stage", "replicate")))
+    Preprocessor().run(ds)
+
+    # banana sample names use 'Over' for overripe
+    X = ds.get("metabolomics")
+    y = ds.sample_meta["stage"].to_numpy()
+    order = ["Green", "Ripe", "Over"]
+    groups = np.arange(len(y))
+
+    ordn = Ordinal(model_type="AT", order=order).fit(X, y, target_type="ordinal")
+    check(ordn._fitted, "Ordinal (mord LogisticAT) fits")
+    coef = ordn.coefficients()
+    check(len(coef) == X.shape[1], "ordinal coefficients cover all features")
+
+    cv = ordn.cross_validate(X, y, groups=groups)
+    check(0.0 <= cv["accuracy"] <= 1.0, f"ordinal grouped-CV accuracy {cv['accuracy']:.3f}")
+    check(cv["mae"] >= 0.0, f"ordinal MAE (ordinal distance) = {cv['mae']:.3f}")
+
+
 def main():
     test_rf_classification_banana()
     test_rf_regression_synthetic()
@@ -256,6 +281,7 @@ def main():
     test_wgcna_reduce_then_predict()
     test_linear_models_synthetic()
     test_nmf_reduce_then_predict()
+    test_ordinal_banana()
     print("\n" + "=" * 60)
     if _failures:
         print(f"{FAIL} {len(_failures)} check(s) failed:")

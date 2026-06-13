@@ -259,9 +259,9 @@ ds.set_target("yield", type="continuous", values=yield_series)
 | Regularized linear prediction (small n) | LASSO / ElasticNet | continuous |
 
 > Currently implemented: Random Forest, sparse PLS-DA, DIABLO (multi-block),
-> WGCNA (modules + reduction), LASSO / ElasticNet (regularized linear), and NMF
-> (parts-based reduction). Others are being ported onto the same interface; the
-> patterns below apply to all of them.
+> WGCNA (modules + reduction), LASSO / ElasticNet (regularized linear), NMF
+> (parts-based reduction), and Ordinal regression (`pip install ml_multiomics[ordinal]`).
+> MOFA is being ported. The patterns below apply to all of them.
 
 ### Dimensionality reduction (the "reduce → predict" pattern)
 
@@ -292,6 +292,41 @@ returns its `W` scores (samples × factors); note NMF needs non-negative input, 
 preprocess with `normalize="none"` (z-scored data is rejected). MOFA/PCA factor
 scores will follow. You can also add `reduced` back to an OmicsDataset as a new
 block.
+
+### Workflow recipes by dataset type
+
+This package is built for **low-n, high-p** data (few samples, many features —
+typical omics). Pick the recipe that matches your situation:
+
+**1. Low-n, high-p, predict an outcome (the common case).**
+Reduce first, then predict — don't throw 5,000 features at a model with 9
+samples. `WGCNA`/`NMF`/`MOFA` → factors, then `RandomForest`/`Lasso` on the
+factors. Or use a method with built-in selection (`SparsePLSDA`, `Lasso`).
+Always grouping-aware CV. Avoid deep learning at this n.
+
+**2. Multiple omics layers, "what separates the groups?"**
+`DIABLO` — it integrates blocks and finds shared discriminative signal, with
+per-block VIP and block-correlation structure.
+
+**3. Ordered categorical outcome (Green < Ripe < Overripe, dose levels).**
+`Ordinal` regression — respects the ordering; report MAE (ordinal distance) as
+well as accuracy.
+
+**4. Continuous outcome (yield, titer, rate).**
+`Lasso`/`ElasticNet` (sparse, interpretable) or `RandomForest` regression
+(non-linear). For p≫n, reduce first (recipe 1).
+
+**5. No labels — just understand the data.**
+`PCA`/`NMF`/`MOFA` (factors) or `WGCNA` (modules). Inspect loadings/eigengenes to
+see what drives each factor/module.
+
+**6. Repeated measures (timepoints per bioreactor) and you want dynamics.**
+Keep timepoints, group by the unit (Decision 1); for a static snapshot instead,
+aggregate per unit/phase (Decision 5).
+
+In every recipe: set the **grouping** (Decision 1), decide **propagate vs
+impute** based on the method (Decision 2), and read p-values with their
+**resolution**.
 
 ---
 

@@ -198,8 +198,10 @@ code (or reproducing exact function bodies) and diffing, not by reading it.
 - Method port: Random Forest (classification + regression), sparse PLS-DA (with
   bootstrap stability selection), DIABLO (multi-block integration), WGCNA
   (co-abundance modules + reduction), LASSO/ElasticNet (regularized linear), and
-  NMF (parts-based reduction) are done and verified. Queued: ordinal regression
-  (needs `mord`) and MOFA (lifted from `ml_psi_mofa`). Unsupervised "reducers"
+  NMF (parts-based reduction), and Ordinal regression (`mord`; LogisticAT/IT/SE,
+  MinMaxScaler dropped to avoid double-scaling) are done and verified. Queued:
+  MOFA (single-group lift from `ml_psi_mofa`; multiphase stays in that repo while
+  in active development). Unsupervised "reducers"
   (WGCNA, NMF; PCA/MOFA to follow) expose a reduced samples x factor matrix for
   the reduce->predict pattern on p >> n data. NMF requires non-negative input
   (z-scored data is rejected) — preprocess with normalize='none'.

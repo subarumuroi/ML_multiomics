@@ -5,7 +5,9 @@
 
 from .base import BaseMethod
 from . import supervised, unsupervised
-from .supervised import RandomForest, SparsePLSDA, DIABLO, RegularizedLinear, Lasso, ElasticNet
+from .supervised import (
+    RandomForest, SparsePLSDA, DIABLO, RegularizedLinear, Lasso, ElasticNet, Ordinal,
+)
 from .unsupervised import WGCNA, NMF
 
 # legacy method namespaces (being consolidated onto BaseMethod)
@@ -14,5 +16,5 @@ from . import multi_omics
 
 __all__ = ['BaseMethod', 'supervised', 'unsupervised',
            'RandomForest', 'SparsePLSDA', 'DIABLO', 'Lasso', 'ElasticNet',
-           'RegularizedLinear', 'WGCNA', 'NMF',
+           'RegularizedLinear', 'Ordinal', 'WGCNA', 'NMF',
            'single_omics', 'multi_omics']

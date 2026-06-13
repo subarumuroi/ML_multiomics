@@ -47,8 +47,10 @@ setup(
         'scipy>=1.7.0',
     ],
     
-    # Optional dependencies for development
+    # Optional dependencies
     extras_require={
+        'ordinal': ['mord>=0.6'],     # ordinal regression (Ordinal method)
+        'shap': ['shap>=0.40'],       # SHAP feature importance (RandomForest.shap_importance)
         'dev': [
             'pytest>=6.0',
             'pytest-cov>=2.0',
