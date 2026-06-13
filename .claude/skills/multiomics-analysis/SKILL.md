@@ -70,12 +70,20 @@ keeping them together stops the model from cheating."
 
 ## Step 5 — Pick the method (use the recipe)
 Map their goal to a method (see USER_GUIDE "Workflow recipes"):
-- **low-n high-p + predict** → reduce then predict: `WGCNA`/`NMF` → `RandomForest`/`Lasso`
+- **low-n high-p + predict** → reduce then predict: `PCA`/`NMF`/`WGCNA` → `RandomForest`/`Lasso`
 - **multi-omics, what separates groups?** → `DIABLO`
 - **ordered category** → `Ordinal`
 - **a number (yield)** → `Lasso`/`ElasticNet` or `RandomForest` (regression)
-- **just explore** → `NMF`/`WGCNA` (inspect factors/modules)
+- **just explore** → `PCA`/`NMF`/`WGCNA` (inspect factors/modules/loadings)
+- **classic DE / enrichment** → `analysis.compute_volcano`, `anova_tukey`, `ora`
+  (run on RAW abundances, not the z-scored matrix)
 Set `target_type` to `nominal` / `ordinal` / `continuous` / `none` accordingly.
+
+Worked examples to follow:
+- categorical outcome: `examples/skill_walkthrough.py` (banana ripening stage)
+- continuous yield + a rendered report: `examples/psilocybin_report/`
+  (predict psilocybin/tryptamine yield from proteomics; reduce→predict;
+  parameterized Quarto "Part 3" report)
 
 ## Step 6 — Run with leakage-free validation
 ```python
