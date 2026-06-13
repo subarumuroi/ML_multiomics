@@ -176,6 +176,34 @@ at machine precision.
 not numerically identical to each other. Parity is established by *running* their
 code (or reproducing exact function bodies) and diffing, not by reading it.
 
+### Differential expression & enrichment (analysis module)
+
+`analysis.compute_volcano` (pairwise Welch t-test + fold change + FDR),
+`analysis.anova_tukey` (one-way ANOVA + Tukey HSD), and `analysis.ora`
+(hypergeometric over-representation) are pure-Python ports of the lab's
+conventions, cross-checked vs the actual R (`run_crosscheck_de.py`):
+
+| quantity | result |
+|----------|--------|
+| fold change, log2fc, Welch p, q (single contrast) | MATCH ~1e-15 vs IdeaBio.R compute_volcano |
+| ORA hypergeometric tail | MATCH ~4e-16 vs base R phyper |
+
+- **DE operates on RAW/linear abundances**, not the z-scored matrix (it computes
+  its own fold change and log10-transforms internally for the test) — matching
+  the lab.
+- **Pseudoreplication caveat (flagged for review):** the lab's DE, and this port,
+  treat every sample as independent. For repeated-measures designs (timepoints
+  per bioreactor) aggregate to one row per independent unit *before* DE.
+- ⚠️ **Bug found in the lab's `compute_volcano`, NOT replicated.** It labels
+  result features with `rep(colnames(fc), times=nrow(fc))` where it needs
+  `each=nrow(fc)`; because R unrolls the matrix column-major, **feature labels
+  are mis-paired with their values whenever there is more than one contrast.**
+  Our Python labels correctly (verified: single-contrast outputs match the lab
+  exactly; multi-contrast outputs differ only because the lab mislabels). This is
+  the kind of silent error that motivates running + diffing the reference code.
+- **GSEA** (running-sum / fgsea) is intentionally not reimplemented in pure
+  Python — no parity is claimed; use the existing clusterProfiler (R) path.
+
 ---
 
 ## 6. Reproducibility

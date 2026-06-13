@@ -320,6 +320,13 @@ well as accuracy.
 `PCA`/`NMF`/`MOFA` (factors) or `WGCNA` (modules). Inspect loadings/eigengenes to
 see what drives each factor/module.
 
+**5b. Classic differential expression / enrichment (standard-workflow style).**
+`analysis.compute_volcano` (pairwise Welch t-test + fold change + FDR),
+`analysis.anova_tukey`, and `analysis.ora` (hypergeometric over-representation).
+These run on **raw/linear** abundances (not the z-scored matrix) and match the
+lab's IdeaBio.R conventions (verified numerically). For repeated-measures data,
+aggregate per independent unit before DE.
+
 **6. Repeated measures (timepoints per bioreactor) and you want dynamics.**
 Keep timepoints, group by the unit (Decision 1); for a static snapshot instead,
 aggregate per unit/phase (Decision 5).

@@ -12,6 +12,7 @@ from . import workflows
 from . import utils
 from . import core
 from . import validation
+from . import analysis
 
 # --- Single-package API: the canonical foundation is importable directly -----
 from .core import (
