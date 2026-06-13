@@ -3,6 +3,7 @@
 A comprehensive, **reusable Python framework** for analyzing and integrating multi-omics datasets. While demonstrated here with banana ripening data, the framework is designed to work with **any multi-omics study**.
 
 > **📖 Start here**
+> - **Not a coder?** Open this repo in Claude Code and ask it to analyze your data — the [multiomics-analysis skill](.claude/skills/multiomics-analysis/SKILL.md) walks it through the whole workflow for you. See [examples/skill_walkthrough.py](examples/skill_walkthrough.py) for what that produces.
 > - [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — **run your own dataset**: a plain-language decision guide (grouping, NaNs, transforms, method choice) with the code for each option. Written to be reproducible without AI.
 > - [docs/TUTORIAL.md](docs/TUTORIAL.md) — install, **verify it yourself**, and run a grouping-aware analysis end to end.
 > - [docs/ASSUMPTIONS_AND_CHOICES.md](docs/ASSUMPTIONS_AND_CHOICES.md) — every methodological choice + rationale, for review and publication.
