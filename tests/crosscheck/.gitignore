@@ -7,3 +7,6 @@ jl_*.csv
 ipca_*.csv
 de_x.csv
 de_groups.csv
+sp_X.csv
+sp_y.csv
+r_splsda_*
