@@ -1,4 +1,0 @@
-Method,Accuracy,Std,Type
-Concatenation,1.0,0.0,Early Fusion
-Block-wise Ensemble,1.0,0.0,Late Fusion
-DIABLO*,1.0,0.0,Joint Integration
