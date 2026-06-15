@@ -28,7 +28,7 @@ if str(SRC) not in sys.path:
 
 from ml_multiomics.core import OmicsDataset, parse_delimited
 from ml_multiomics.preprocessing import Preprocessor
-from ml_multiomics.methods import RandomForest, SparsePLSDA, DIABLO, WGCNA, NMF, PCA, Lasso, ElasticNet, Ordinal
+from ml_multiomics.methods import RandomForest, SparsePLSDA, NativeDIABLO, WGCNA, NMF, PCA, Lasso, ElasticNet, Ordinal
 from ml_multiomics.preprocessing import Profile
 
 BANANA = ROOT / "data"
@@ -133,7 +133,8 @@ def test_splsda_banana():
 
 
 def test_diablo_banana():
-    print("\n=== DIABLO multi-block (banana: 3 omics) ===")
+    print("\n=== NativeDIABLO multi-block (banana: 3 omics) — pure-Python ===")
+    print("   (the default DIABLO is R-backed mixOmics; tested via the banana report)")
     files = {
         "proteomics": ("badata-proteomics-imputed.csv", "proteomics"),
         "metabolomics": ("badata-metabolomics.csv", "metabolomics"),
@@ -152,7 +153,7 @@ def test_diablo_banana():
     groups = np.arange(len(y))
     keepX = {"proteomics": 20, "metabolomics": 10, "amino_acids": 10}
 
-    dia = DIABLO(n_components=2, keepX=keepX, design=0.1).fit(ds, y, target_type="nominal")
+    dia = NativeDIABLO(n_components=2, keepX=keepX, design=0.1).fit(ds, y, target_type="nominal")
     corr = dia.block_correlations()
     check(corr.shape == (3, 3), "block-correlation matrix is 3x3")
     av = dia.all_vip()

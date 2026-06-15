@@ -6,10 +6,12 @@
 from .base import BaseMethod
 from . import supervised, unsupervised
 from .supervised import (
-    RandomForest, SparsePLSDA, DIABLO, RegularizedLinear, Lasso, ElasticNet, Ordinal,
+    RandomForest, SparsePLSDA, DIABLO, NativeDIABLO,
+    RegularizedLinear, Lasso, ElasticNet, Ordinal,
 )
 from .unsupervised import WGCNA, NMF, PCA
 
 __all__ = ['BaseMethod', 'supervised', 'unsupervised',
-           'RandomForest', 'SparsePLSDA', 'DIABLO', 'Lasso', 'ElasticNet',
-           'RegularizedLinear', 'Ordinal', 'WGCNA', 'NMF', 'PCA']
+           'RandomForest', 'SparsePLSDA', 'DIABLO', 'NativeDIABLO',
+           'Lasso', 'ElasticNet', 'RegularizedLinear', 'Ordinal',
+           'WGCNA', 'NMF', 'PCA']

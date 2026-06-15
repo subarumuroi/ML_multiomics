@@ -159,7 +159,14 @@ def _diablo_predict(fit: dict, X_blocks) -> np.ndarray:
     return fit["classes"][np.argmax(Y_hat, axis=1)]
 
 
-class DIABLO(BaseMethod):
+class NativeDIABLO(BaseMethod):
+    """EXPERIMENTAL native-Python DIABLO (teaching / exploration).
+
+    NOT validated against mixOmics — its sample variates track mixOmics closely
+    (sPLS-DA probe: r=0.999) but the multi-block design coupling is unverified.
+    For analysis, use the R-backed `DIABLO` (mixOmics::block.splsda). Kept because
+    Subaru rewrote DIABLO in Python to understand the algorithm.
+    """
     handles_missing = False
     requires_target = True
     supported_targets = ("nominal", "ordinal")

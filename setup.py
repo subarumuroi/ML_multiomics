@@ -32,6 +32,8 @@ setup(
     # Package discovery - look in src directory
     package_dir={'': 'src'},
     packages=find_packages(where='src'),
+    package_data={'ml_multiomics': ['rscripts/*.R']},   # R bridges (DIABLO/WGCNA)
+    include_package_data=True,
     
     # Python version requirement
     python_requires='>=3.8',
