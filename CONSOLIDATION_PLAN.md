@@ -8,7 +8,7 @@ then wrap it in a skill so any operator can run the whole workflow.
 
 ---
 
-## 0. Hard rules (non-negotiable)
+## 0. Reformatting scheme
 
 1. **Single-package API.** EVERY algorithm lives in `ml_multiomics`. Downstream
    code imports nothing else for analysis — `from ml_multiomics import ...` is
@@ -17,26 +17,12 @@ then wrap it in a skill so any operator can run the whole workflow.
    (`ml_psi_mofa`, future datasets) keep ONLY dataset-specific glue (loading,
    QC, domain config) and call the library for all methods.
 2. **Pure-Python, no R / no Julia** in the default install. (R-backed DIABLO is
-   an optional `[r]` extra only.) Removes dependence on the lab's gatekept
-   `IdeaBio.R` / `IdeaBio.jl`.
+   an optional `[r]` extra only.) Removes dependence on the non-python
+   implementation with parity for assurance and benefit of easier mgmt avoiding
+   cross-language friction.
 3. **One shell: bash (MSYS2).** All commands run through MSYS2 bash, not
-   PowerShell. POSIX paths (`/c/Users/...`), forward slashes, one consistent
-   environment. No more Windows/Linux venv thrash.
-
-### Environment & tooling (verified 2026-05-29)
-
-| Tool | MSYS2 bash (chosen) | WSL (rejected) |
-|------|---------------------|----------------|
-| bash / POSIX | yes | yes |
-| Python 3.12 | yes | yes |
-| R 4.4.0 | yes | **missing** |
-| Quarto | yes | **missing** |
-| git / pip | yes | **missing** |
-
-MSYS2 has the entire toolchain already; WSL would need R + Quarto + pip + git
-installed first. So MSYS2 bash is the working environment. Venvs are
-Windows-layout (`Scripts/`) but driven only from MSYS2 bash. **Standardize on
-`.venv` naming** across all repos (currently `venv` in two, `.venv` in one).
+   PowerShell. To consolidate inconsistency with previous code bases and 
+   integration issues.
 
 ---
 
@@ -52,8 +38,8 @@ Three repos currently overlap and fragment the same work:
 
 Strategic note: consolidating on the **pure-Python** implementations removes all
 dependence on the lab's R (`IdeaBio.R`) and Julia (`IdeaBio.jl`) tooling. The
-library + skill becomes a self-contained, automatable workflow — the
-demonstration that the analysis pipeline does not require a human gatekeeper.
+library + skill becomes a self-contained, automatable workflow if future users
+wish to implement full automation of analysis pipelines.
 
 ---
 
@@ -179,9 +165,10 @@ Each step is its own commit (or small series), verified before the next.
 
 ---
 
-## 7. Out of scope (deliberately)
+## 7. Limitations
 
-- No deep learning — at n<30 it is indefensible; reviewers reject it.
+- No deep learning at n<30; Ideal for synbio but current datasets are constrained
+  by this limitation, particularly when p>>n.
 - No rewrite of the IDEA Bio fermentation front-end — we *extend* its report,
   picking up at the `.metabolics` stub. We do not replace Part 1/Part 2.
 - ml_psi_mofa's psilocybin-specific QC/yield logic stays in ml_psi_mofa.

@@ -22,7 +22,7 @@ long_description = (here / 'README.md').read_text(encoding='utf-8')
 
 setup(
     name='ml_multiomics',
-    version='0.1.0',
+    version='0.2.0',
     description='Multi-omics machine learning framework for integrative analysis',
     long_description=long_description,
     long_description_content_type='text/markdown',

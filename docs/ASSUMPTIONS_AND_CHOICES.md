@@ -149,8 +149,8 @@ regressor from the target type.
 
 ### No deep learning
 
-At n < ~30 (both datasets), deep models are indefensible and reviewers reject
-them. The method set is deliberately regularized / tree-based / factor-analytic:
+At n < ~30 (both datasets), deep models are not appropriate for the data. 
+The method set is deliberately regularized / tree-based / factor-analytic:
 PCA, NMF, MOFA, WGCNA (unsupervised); sparse PLS-DA, DIABLO, Random Forest,
 ordinal regression, LASSO/ElasticNet (supervised).
 
