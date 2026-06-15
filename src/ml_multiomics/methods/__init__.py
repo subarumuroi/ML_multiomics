@@ -9,9 +9,9 @@ from .supervised import (
     RandomForest, SparsePLSDA, DIABLO, NativeDIABLO,
     RegularizedLinear, Lasso, ElasticNet, Ordinal,
 )
-from .unsupervised import WGCNA, NMF, PCA
+from .unsupervised import WGCNA, NativeWGCNA, NMF, PCA
 
 __all__ = ['BaseMethod', 'supervised', 'unsupervised',
            'RandomForest', 'SparsePLSDA', 'DIABLO', 'NativeDIABLO',
            'Lasso', 'ElasticNet', 'RegularizedLinear', 'Ordinal',
-           'WGCNA', 'NMF', 'PCA']
+           'WGCNA', 'NativeWGCNA', 'NMF', 'PCA']

@@ -28,7 +28,7 @@ if str(SRC) not in sys.path:
 
 from ml_multiomics.core import OmicsDataset, parse_delimited
 from ml_multiomics.preprocessing import Preprocessor
-from ml_multiomics.methods import RandomForest, SparsePLSDA, NativeDIABLO, WGCNA, NMF, PCA, Lasso, ElasticNet, Ordinal
+from ml_multiomics.methods import RandomForest, SparsePLSDA, NativeDIABLO, NativeWGCNA, NMF, PCA, Lasso, ElasticNet, Ordinal
 from ml_multiomics.preprocessing import Profile
 
 BANANA = ROOT / "data"
@@ -164,7 +164,8 @@ def test_diablo_banana():
 
 
 def test_wgcna_reduce_then_predict():
-    print("\n=== WGCNA as dimensionality reduction -> RandomForest ===")
+    print("\n=== NativeWGCNA reduction -> RandomForest (pure-Python) ===")
+    print("   (the default WGCNA is R-backed; tested via the banana report)")
     df = pd.read_csv(BANANA / "badata-aromatics.csv").set_index("Sample")
     df = df.drop(columns=[c for c in ("Groups",) if c in df.columns])
     ds = OmicsDataset(name="banana")
@@ -175,7 +176,7 @@ def test_wgcna_reduce_then_predict():
     X = ds.get("aromatics")
     y = ds.sample_meta["stage"].to_numpy()
 
-    wg = WGCNA(corr_method="spearman").fit(X, y, target_type="ordinal")
+    wg = NativeWGCNA(corr_method="spearman").fit(X, y, target_type="ordinal")
     mods = wg.modules()
     check(len(mods) == X.shape[1], f"module assignment covers all {X.shape[1]} features")
 

@@ -295,7 +295,13 @@ def run_wgcna(X, y_encoded=None, feature_names=None, power=None, corr_method="sp
             "eigengenes": eigengenes}
 
 
-class WGCNA(BaseMethod):
+class NativeWGCNA(BaseMethod):
+    """EXPERIMENTAL native-Python WGCNA (teaching / exploration).
+
+    NOT validated against the R WGCNA package — uses a static tree cut + eigengene
+    merge, NOT WGCNA's dynamic tree cut. For analysis, use the R-backed `WGCNA`
+    (wgcna_r.WGCNA). Kept for portability / understanding the pipeline.
+    """
     handles_missing = False
     requires_target = False
     supported_targets = ("nominal", "ordinal", "continuous", "none")
