@@ -6,6 +6,7 @@ from .diablo import NativeDIABLO          # experimental Python port (unvalidate
 from .diablo_r import DIABLO              # default: R mixOmics::block.splsda
 from .linear import RegularizedLinear, Lasso, ElasticNet
 from .ordinal import Ordinal
+from .xgboost_method import XGBoost
 
 __all__ = ["RandomForest", "SparsePLSDA", "DIABLO", "NativeDIABLO",
-           "RegularizedLinear", "Lasso", "ElasticNet", "Ordinal"]
+           "RegularizedLinear", "Lasso", "ElasticNet", "Ordinal", "XGBoost"]

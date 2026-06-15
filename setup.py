@@ -54,6 +54,7 @@ setup(
     extras_require={
         'ordinal': ['mord>=0.6'],     # ordinal regression (Ordinal method)
         'shap': ['shap>=0.40'],       # SHAP feature importance (RandomForest.shap_importance)
+        'xgboost': ['xgboost>=1.7'],  # XGBoost method (gradient boosting)
         'report': ['ipykernel', 'nbclient', 'nbformat', 'jupyter_client', 'pyyaml'],  # Quarto rendering
         'dev': [
             'pytest>=6.0',

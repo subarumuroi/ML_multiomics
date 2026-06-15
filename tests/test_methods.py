@@ -275,6 +275,29 @@ def test_ordinal_banana():
     check(cv["mae"] >= 0.0, f"ordinal MAE (ordinal distance) = {cv['mae']:.3f}")
 
 
+def test_xgboost_synthetic():
+    print("\n=== XGBoost (synthetic; handles_missing=True) ===")
+    try:
+        from ml_multiomics.methods import XGBoost
+        import xgboost  # noqa: F401
+    except ImportError:
+        print("  [SKIP] xgboost not installed (pip install ml_multiomics[xgboost])")
+        return
+    rng = np.random.default_rng(0)
+    n_groups, per = 10, 2
+    n = n_groups * per
+    X = pd.DataFrame(rng.normal(size=(n, 12)), columns=[f"f{i}" for i in range(12)])
+    X.iloc[3, 1] = np.nan  # XGBoost should handle this natively
+    groups = np.repeat(np.arange(n_groups), per)
+    y = (2.5 * X["f0"].fillna(0).to_numpy() + rng.normal(scale=0.3, size=n))
+    xgb = XGBoost().fit(X, y, target_type="continuous")
+    check(xgb.task_ == "regression", "XGBoost auto-resolves to regression")
+    check(xgb._fitted, "XGBoost fit succeeds with NaN present (native missing handling)")
+    cv = xgb.cross_validate(X, y, groups=groups, target_type="continuous")
+    check("r2" in cv, f"XGBoost grouped-CV r2 = {cv['r2']:.2f}")
+    check(len(xgb.importances()) == X.shape[1], "XGBoost importances cover all features")
+
+
 def test_pca_reduce_then_predict():
     print("\n=== PCA as dimensionality reduction -> RandomForest ===")
     df = pd.read_csv(BANANA / "badata-proteomics-imputed.csv").set_index("Sample")
@@ -307,6 +330,7 @@ def main():
     test_linear_models_synthetic()
     test_nmf_reduce_then_predict()
     test_ordinal_banana()
+    test_xgboost_synthetic()
     test_pca_reduce_then_predict()
     print("\n" + "=" * 60)
     if _failures:
