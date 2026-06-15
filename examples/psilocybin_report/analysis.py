@@ -25,7 +25,7 @@ _SRC = Path(__file__).resolve().parents[2] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from ml_multiomics import OmicsDataset, Preprocessor, Profile, RandomForest, Lasso, WGCNA, NMF
+from ml_multiomics import OmicsDataset, Preprocessor, Profile, RandomForest, Lasso, ElasticNet, NMF, PCA
 from ml_multiomics.core import parse_bioreactor_ids
 from ml_multiomics.validation import permutation_resolution
 
@@ -106,26 +106,30 @@ def run_yield_analysis(
                      "n_input_features": X.shape[1]})
         return cv
 
+    # Direct (all proteins, z-scored): regularized linear + tree
     las = Lasso(alpha=0.1).fit(Xz, y, target_type="continuous")
-    _reg("Lasso", las, Xz)
+    _reg("Lasso (all proteins)", las, Xz)
     top_features["Lasso"] = las.coefficients(top_n=10)
 
+    en = ElasticNet(alpha=0.1, l1_ratio=0.5).fit(Xz, y, target_type="continuous")
+    _reg("ElasticNet (all proteins)", en, Xz)
+
     rf = RandomForest(random_state=seed).fit(Xz, y, target_type="continuous")
-    _reg("RandomForest", rf, Xz)
+    _reg("RandomForest (all proteins)", rf, Xz)
     top_features["RandomForest"] = rf.importances(top_n=10)
 
-    wg = WGCNA(corr_method="spearman").fit(Xz, y, target_type="continuous")
-    Xw = wg.reduce(strategy="eigengenes_and_hubs")
-    wgcna_n_modules = int(len(set(wg.modules()["Module"]) - {0}))
-    if Xw.shape[1] >= 2:
-        rfw = RandomForest(random_state=seed).fit(Xw, y, target_type="continuous")
-        _reg("WGCNA->RF", rfw, Xw)
+    # Reduce the big proteomics block, then predict (validated reducers: PCA / NMF)
+    pca = PCA(n_components=n_factors, random_state=seed).fit(Xz)
+    _reg(f"PCA({n_factors})->RF", RandomForest(random_state=seed).fit(pca.reduce(), y, target_type="continuous"), pca.reduce())
+    top_features["PCA_PC1"] = pca.top_features(1, top_n=10)
 
     nmf = NMF(n_components=n_factors, random_state=seed).fit(Xnn, y)
     Xn = nmf.reduce()
-    rfn = RandomForest(random_state=seed).fit(Xn, y, target_type="continuous")
-    _reg("NMF->RF", rfn, Xn)
+    _reg(f"NMF({n_factors})->RF", RandomForest(random_state=seed).fit(Xn, y, target_type="continuous"), Xn)
     top_features["NMF_factor1"] = nmf.top_features(1, top_n=10)
+
+    # Null baseline: predicting the mean (R^2 = 0 by construction); report its RMSE
+    mean_rmse = float(np.sqrt(np.mean((y - y.mean()) ** 2)))
 
     comparison = pd.DataFrame(rows).sort_values("r2", ascending=False).reset_index(drop=True)
     return {
@@ -137,8 +141,7 @@ def run_yield_analysis(
         "yield_std": float(np.std(y)),
         "comparison": comparison,
         "top_features": top_features,
-        "wgcna_n_modules": wgcna_n_modules,
-        "wgcna_reduced_cols": int(Xw.shape[1]),
+        "baseline_mean_rmse": mean_rmse,    # predict-the-mean: R^2=0, rmse=this
         "resolution": permutation_resolution(groups, meta["condition"].to_numpy()),
         "conditions": meta["condition"].value_counts().to_dict(),
     }

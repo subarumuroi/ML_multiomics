@@ -1,9 +1,15 @@
 # Psilocybin "Part 3 — Omics & ML" report
 
-A parameterized Quarto report that predicts a metabolite **yield** from phase-3
-**proteomics** using `ml_multiomics`, comparing methods under leakage-free
-(per-bioreactor) cross-validation. It extends the IDEA Bio fermentation report
-(Parts 1–2) with the omics/ML analysis their template stubs out.
+A parameterized, **interpretation-framed** Quarto report that relates phase-3
+**proteomics** to a metabolite **yield** using `ml_multiomics`. It extends the
+IDEA Bio fermentation report (Parts 1–2) with the omics/ML analysis their
+template stubs out.
+
+Framing: at ~28 bioreactors this is **hypothesis-generation, not a predictor
+leaderboard**. Cross-validation (leave-one-bioreactor-out) is a *guardrail*
+(beats the predict-the-mean baseline? overfitting?), the descriptive model panel
+is not a ranking, and reducing the ~4,000-protein block to a few PCA/NMF factors
+is principled, interpretable preprocessing.
 
 ## Files
 - `analysis.py` — the validated analysis engine (`run_yield_analysis(compound)`).
