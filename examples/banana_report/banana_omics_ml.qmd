@@ -1,0 +1,149 @@
+---
+title: "Banana ripening — Omics & Machine Learning"
+subtitle: "Multi-omics integration of proteomics, metabolomics, amino acids & volatiles"
+author: "ml_multiomics"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    code-fold: true
+    embed-resources: true
+jupyter: python3
+execute:
+  warning: false
+  cache: false
+---
+
+An **interpretation / hypothesis-generation** report (not a predictive
+leaderboard — at n=9 a deployable predictor isn't the goal). Ordered categories
+(Green < Ripe < Overripe); samples are independent fruit, so cross-validation is
+leave-one-out and serves as a **guardrail**, not a performance claim. Multi-omics
+integration uses **R mixOmics DIABLO** (the reference implementation); reductions
+use PCA/NMF (sklearn). See `docs/ASSUMPTIONS_AND_CHOICES.md`.
+
+```{python}
+#| echo: false
+#| output: false
+import sys
+from pathlib import Path
+HERE = Path.cwd()
+for cand in (HERE, HERE / "examples" / "banana_report"):
+    if (cand / "analysis.py").exists():
+        sys.path.insert(0, str(cand)); break
+import analysis
+import matplotlib.pyplot as plt
+from IPython.display import Markdown
+res = analysis.run_banana_analysis()
+```
+
+# Overview
+
+```{python}
+#| echo: false
+Markdown(
+    f"- **Samples:** {res['n_samples']} bananas (independent units; leave-one-out CV)\n"
+    f"- **Stages:** " + ", ".join(f"{k} (n={v})" for k, v in res['stage_counts'].items()) +
+    f"  — ordered Green < Ripe < Overripe\n"
+    f"- **Blocks:** " + ", ".join(f"{b} ({p} features)" for b, p in res['blocks'].items()) + "\n"
+    f"- **Statistical resolution:** finest achievable permutation p-value "
+    f"≈ {res['resolution']['finest_two_sided_p']:.2g} "
+    f"({res['resolution']['n_distinct_arrangements']:,} label arrangements)\n"
+    f"- **Null baseline:** majority-class accuracy = {res['baseline_majority_acc']:.0%}"
+)
+```
+
+# Part 1 — Multi-omics integration (DIABLO, R mixOmics)
+
+DIABLO finds latent components correlated **across** the omics blocks while
+separating ripening stage, and selects a sparse set of features per block.
+
+```{python}
+#| echo: false
+Markdown("**Block-to-block correlation (component 1 variates):** how strongly the "
+         "blocks agree on the dominant axis of variation.")
+```
+
+```{python}
+#| echo: false
+res["diablo_block_correlations"].round(3)
+```
+
+```{python}
+#| echo: false
+Markdown("**Selected features per block** (sparse DIABLO loadings). These are the "
+         "cross-omics features whose coordinated change tracks ripening:")
+```
+
+```{python}
+#| echo: false
+sel = res["diablo_selected"]
+sel.groupby(["block", "component"]).size().rename("n_selected").reset_index()
+```
+
+# Part 2 — Reducing the large proteomics block
+
+Proteomics (~5,000 features) dwarfs the other blocks (10s of features). Collapsing
+it to a few factors **balances the blocks** and yields interpretable axes — this
+is principled preprocessing, described, not an arbitrary modelling choice.
+
+```{python}
+#| echo: false
+Markdown("**PCA variance explained** (proteomics):")
+```
+
+```{python}
+#| echo: false
+res["proteomics_pca_var"].round(3)
+```
+
+```{python}
+#| echo: false
+Markdown("**NMF factor 1 — top proteins** (parts-based, non-negative):")
+```
+
+```{python}
+#| echo: false
+res["proteomics_nmf_factor1_top"].round(4)
+```
+
+# Part 3 — Descriptive model panel (CV as a guardrail)
+
+Each approach under leave-one-out CV. **This is not a leaderboard** — at n=9 a
+single CV score is noisy; read it as "does this clear the majority baseline
+(~33%) and not obviously overfit?", not as a precise ranking. For the ordered
+target, MAE (ordinal distance) is the honest error.
+
+```{python}
+#| echo: false
+res["panel"].round(3)
+```
+
+# Part 4 — How much to trust this
+
+```{python}
+#| echo: false
+r = res["resolution"]
+Markdown(
+    f"- **n = {res['n_samples']}** — treat everything as **exploratory** and "
+    f"cross-check methods/biology.\n"
+    f"- **Easy structure:** the three ripening stages are strongly separated, so "
+    f"most methods reach high accuracy — that means the *signal is clear*, not "
+    f"that any one model is 'best'.\n"
+    f"- **Resolution floor:** the smallest p-value this design can produce is "
+    f"≈ {r['finest_two_sided_p']:.2g}; report effect size first.\n"
+    f"- **Validated tools:** DIABLO = R mixOmics::block.splsda; reductions =\n"
+    f"  PCA/NMF (sklearn). Data z-scored once; no double-scaling; NMF ran on\n"
+    f"  non-negative log2 data.\n"
+    f"- **Independent unit:** each banana is its own sample (assumed different\n"
+    f"  fruit per stage, not one fruit tracked over time). If that assumption is\n"
+    f"  wrong (same fruit), CV should group by fruit instead."
+)
+```
+
+# Methods
+
+Multi-omics integration via the reference R implementation (mixOmics DIABLO);
+dimensionality reduction via PCA / NMF (sklearn); ordered classification via
+ordinal regression (`mord`); Random Forest / sparse PLS-DA (sklearn / native).
+All cross-validation is leave-one-out over independent samples; preprocessing is
+missing-aware log + z-score (scaled once).
