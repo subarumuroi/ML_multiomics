@@ -258,10 +258,12 @@ ds.set_target("yield", type="continuous", values=yield_series)
 | Predict an ordered category | ordinal regression | ordinal |
 | Regularized linear prediction (small n) | LASSO / ElasticNet | continuous |
 
-> Currently implemented: Random Forest, sparse PLS-DA, DIABLO (multi-block),
-> WGCNA (modules + reduction), NMF and PCA (reduction), LASSO / ElasticNet
-> (regularized linear), and Ordinal regression (`pip install ml_multiomics[ordinal]`).
-> MOFA is being ported. The patterns below apply to all of them.
+> Currently implemented: Random Forest, XGBoost, sparse PLS-DA, LASSO/ElasticNet,
+> Ordinal (`[ordinal]`) — supervised; PCA, NMF — reducers (sklearn). **DIABLO and
+> WGCNA use the reference R implementations** (mixOmics / WGCNA via the `[r]` path)
+> rather than unvalidated Python ports (native ports kept as `NativeDIABLO` /
+> `NativeWGCNA`, experimental). MOFA is being ported. The patterns below apply to
+> all of them.
 
 ### Dimensionality reduction (the "reduce → predict" pattern)
 

@@ -223,20 +223,31 @@ conventions, cross-checked vs the actual R (`run_crosscheck_de.py`):
 - Just-in-time imputation currently uses whole-matrix column statistics
   (matching the lab's impute-then-analyse flow); strict fold-wise imputation
   inside CV is a possible future refinement.
-- Method port: Random Forest (classification + regression), sparse PLS-DA (with
-  bootstrap stability selection), DIABLO (multi-block integration), WGCNA
-  (co-abundance modules + reduction), NMF and PCA (reduction), LASSO/ElasticNet
-  (regularized linear), and Ordinal regression (`mord`; LogisticAT/IT/SE,
-  MinMaxScaler dropped to avoid double-scaling) are done and verified. The legacy
-  ml_multiomics preprocessing hierarchy, single_omics/multi_omics method
-  namespaces, workflows/, and utils/ have been removed (dedupe, Task #19) — the
-  package now has one clean surface: core / preprocessing / methods / validation
-  / analysis. The R-backed mixOmics DIABLO was dropped (native pure-Python DIABLO
-  supersedes it; an optional [r] re-add is possible later). Queued:
-  MOFA (single-group lift from `ml_psi_mofa`; multiphase stays in that repo while
-  in active development). Unsupervised "reducers"
-  (WGCNA, NMF; PCA/MOFA to follow) expose a reduced samples x factor matrix for
-  the reduce->predict pattern on p >> n data. NMF requires non-negative input
-  (z-scored data is rejected) — preprocess with normalize='none'.
+- Methods (done + verified): Random Forest, **XGBoost** (gradient boosting,
+  conservative small-n defaults, native missing handling), sparse PLS-DA (with
+  bootstrap stability selection), LASSO/ElasticNet, Ordinal (`mord`) — supervised;
+  PCA, NMF — reducers (sklearn). The legacy preprocessing hierarchy, single_omics/
+  multi_omics, workflows/, utils/ were removed (dedupe, Task #19) — one clean
+  surface: core / preprocessing / methods / validation / analysis. Unsupervised
+  "reducers" (PCA, NMF; MOFA to follow) expose a samples x factor matrix for the
+  reduce->predict pattern at p >> n. NMF requires non-negative input (z-scored
+  rejected) — preprocess with normalize='none'.
+- **DIABLO and WGCNA use the REFERENCE R implementations** (mixOmics::block.splsda,
+  WGCNA package) via a subprocess bridge — chosen because these reimplementations
+  are hardest to validate and the user lacks the domain background to assess their
+  parameters; the standard tools also bring validated tuning (`tune.block.splsda`).
+  A sPLS-DA probe vs mixOmics showed our native NIPALS matches the *variates*
+  (r=0.999) but the sparse feature *selection* only ~75-85% — good for components,
+  not for exact biomarker lists. The native Python ports are kept as
+  `NativeDIABLO` / `NativeWGCNA` (experimental, unvalidated). Depending on mixOmics/
+  WGCNA (community-standard, citable) does NOT reintroduce dependence on the lab's
+  gatekept IdeaBio.R/.jl. Caveat: parity/correctness ≠ appropriateness — these
+  methods may still be ill-suited to n≈24.
+- **Reports are interpretation-framed, not leaderboards** (examples/banana_report,
+  examples/psilocybin_report): at small n a single CV score is noisy, so CV is a
+  guardrail (beats predict-the-mean? overfitting?), reducing the big proteomics
+  block is principled described preprocessing, and the panel is descriptive (no
+  crowned winner). Queued: MOFA single-group lift (multiphase stays in ml_psi_mofa
+  while in active development).
 - MOFA core is to be lifted from `ml_psi_mofa` into the library so all algorithms
   share one import surface.
