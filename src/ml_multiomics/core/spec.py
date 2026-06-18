@@ -94,6 +94,15 @@ class AnalysisSpec:
     grouping_parser: str = "user-supplied"
     min_obs_frac: Optional[float] = None
     name: Optional[str] = None
+    #: per-layer declaration of what upstream ALREADY did, so ML preprocessing can
+    #: skip/adapt rather than double-apply. e.g.
+    #: {"proteomics": {"transform": "log2", "normalized": False, "imputed": True}}.
+    #: Undeclared layers are assumed raw (nothing applied).
+    input_states: dict = field(default_factory=dict)
+    #: per-layer raw/least-processed DataFrame to use INSTEAD of the dataset block
+    #: when ML needs the un-processed values (the legitimate "revert"; e.g. banana's
+    #: unimputed proteomics). Recorded in provenance.
+    raw_sources: dict = field(default_factory=dict)
 
     # -- role views --------------------------------------------------------
     def _layers_with_role(self, role: str) -> list[str]:
@@ -114,6 +123,10 @@ class AnalysisSpec:
     def transform_for(self, layer: str) -> Optional[str]:
         """The declared transform override for ``layer`` (None = use default)."""
         return self.transforms.get(layer)
+
+    def input_state_for(self, layer: str) -> dict:
+        """Declared upstream state for ``layer`` (empty = assumed raw / nothing applied)."""
+        return dict(self.input_states.get(layer, {}))
 
     # -- validation --------------------------------------------------------
     def validate(self, ds: OmicsDataset) -> "AnalysisSpec":
@@ -172,6 +185,14 @@ class AnalysisSpec:
             )
         if self.target_type == "ordinal" and not self.ordinal_order:
             errors.append("ordinal target requires ordinal_order (the category order)")
+
+        # upstream-state / raw-source declarations must name real layers
+        for layer in self.input_states:
+            if layer not in block_names:
+                errors.append(f"input_states declared for unknown layer {layer!r}")
+        for layer in self.raw_sources:
+            if layer not in block_names:
+                errors.append(f"raw_sources declared for unknown layer {layer!r}")
 
         # integration groups: members must be predictors; combination is explicit
         if self.integration_groups is not None:
@@ -234,6 +255,14 @@ class AnalysisSpec:
                 lines.append(f"      - {' + '.join(g)}")
         else:
             lines.append("  integration   : none declared (each predictor analysed single-block)")
+        if self.input_states or self.raw_sources:
+            lines.append("  upstream state:")
+            for layer in sorted(set(self.input_states) | set(self.raw_sources)):
+                st = self.input_states.get(layer, {})
+                bits = [f"{k}={v}" for k, v in st.items()]
+                if layer in self.raw_sources:
+                    bits.append("raw_source=provided")
+                lines.append(f"      - {layer}: {', '.join(bits) or 'declared'}")
         return "\n".join(lines)
 
     def to_record(self) -> dict:
@@ -252,4 +281,6 @@ class AnalysisSpec:
                 "ordinal_order": self.ordinal_order,
             },
             "min_obs_frac": self.min_obs_frac,
+            "input_states": dict(self.input_states),
+            "raw_sources": sorted(self.raw_sources),  # layer names only (data not serialised)
         }

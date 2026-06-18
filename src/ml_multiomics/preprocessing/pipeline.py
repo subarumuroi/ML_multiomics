@@ -155,6 +155,7 @@ class FittablePreprocessor:
         omics_type: Optional[str] = None,
         min_obs_frac: Optional[float] = None,
         impute: Optional[str] = None,
+        input_state: Optional[dict] = None,
     ):
         self.profile = profile or DEFAULT_PROFILES.get(omics_type, DEFAULT_PROFILES["default"])
         self.omics_type = omics_type
@@ -162,6 +163,13 @@ class FittablePreprocessor:
         self.impute = impute
         if impute is not None and impute not in IMPUTERS:
             raise ValueError(f"unknown impute strategy {impute!r}; have {list(IMPUTERS)} or None")
+        # upstream state: what the data ALREADY had done to it (skip/adapt, don't double-apply)
+        self.input_state = input_state or {}
+        self._already_transformed = self.input_state.get("transform") not in (None, "none", "unknown")
+        self._already_normalized = bool(self.input_state.get("normalized"))
+        self._already_imputed = bool(self.input_state.get("imputed"))
+        #: human-readable flags the engine promotes to divergences
+        self.upstream_notes_: list = []
         # learned state
         self.keep_cols_: Optional[list] = None
         self.impute_fills_: Optional[pd.Series] = None      # metaboanalyst per-feature fill
@@ -174,6 +182,8 @@ class FittablePreprocessor:
 
     # -- internal stages ---------------------------------------------------
     def _transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        if self._already_transformed:        # upstream already transformed -> don't double-apply
+            return df
         tfn = _TRANSFORMS.get(self.profile.transform)
         return tfn(df) if tfn is not None else df
 
@@ -207,9 +217,33 @@ class FittablePreprocessor:
     def fit(self, X: pd.DataFrame) -> "FittablePreprocessor":
         X = pd.DataFrame(X)
         n_in = X.shape
+
+        # record upstream-state adaptations up front (the engine promotes these to divergences)
+        if self._already_transformed:
+            self.upstream_notes_.append(
+                f"upstream already applied transform '{self.input_state.get('transform')}'; "
+                f"the ML transform '{self.profile.transform}' was SKIPPED (no double-transform)."
+            )
+        if self._already_normalized and self.profile.normalize == "zscore":
+            self.upstream_notes_.append(
+                "upstream already normalized this layer; per-fold z-score SKIPPED -- the raw scale "
+                "is unrecoverable, so upstream (likely global) scaling cannot be made leakage-free. "
+                "Supply a raw_source for a clean per-fold scaling."
+            )
+        if self._already_imputed:
+            self.upstream_notes_.append(
+                "upstream pre-imputed this layer; missingness is masked, so the detection filter and "
+                "per-fold imputation cannot operate from raw. Supply a raw_source (e.g. the unimputed "
+                "matrix) for leakage-free handling."
+            )
+
         df = self._transform(X)
-        self.provenance.record("transform", {"kind": self.profile.transform},
-                               in_obj=X, out_obj=df, fit_on_train=True)
+        self.provenance.record(
+            "transform",
+            {"kind": "skipped(upstream)" if self._already_transformed else self.profile.transform},
+            in_obj=X, out_obj=df, fit_on_train=True,
+            note="skipped: already transformed upstream" if self._already_transformed else "",
+        )
 
         # detection filter (method-aware; max_missing_frac = 1 - min_obs_frac)
         cols = list(df.columns)
@@ -247,7 +281,7 @@ class FittablePreprocessor:
                                    in_obj=df, out_obj=completed, fit_on_train=True)
 
         # z-score params learned on the (completed-or-observed) train matrix
-        if self.profile.normalize == "zscore":
+        if self.profile.normalize == "zscore" and not self._already_normalized:
             self.zscore_mean_ = completed.mean(axis=0)
             sd = completed.std(axis=0, ddof=1).replace(0, np.nan)
             self.zscore_sd_ = sd.where(sd.notna(), 1.0)
@@ -256,6 +290,10 @@ class FittablePreprocessor:
                                    fit_on_train=True, note="mean/sd from train")
         else:
             out = completed
+            if self.profile.normalize == "zscore" and self._already_normalized:
+                self.provenance.record("zscore", {"kind": "skipped(upstream)"},
+                                       in_obj=completed, out_obj=out, fit_on_train=True,
+                                       note="skipped: already normalized upstream")
 
         self._fit_cache_ = out
         self.fitted_ = True
@@ -270,7 +308,7 @@ class FittablePreprocessor:
         df = self._transform(X)
         df = df.reindex(columns=self.keep_cols_)         # train-selected features only
         df = self._complete(df, is_train=False)
-        if self.profile.normalize == "zscore":
+        if self.profile.normalize == "zscore" and not self._already_normalized and self.zscore_mean_ is not None:
             df = (df - self.zscore_mean_) / self.zscore_sd_
         return df
 
