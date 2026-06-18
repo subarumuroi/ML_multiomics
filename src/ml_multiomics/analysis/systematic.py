@@ -43,11 +43,12 @@ from ..core.dataset import OmicsDataset
 from ..core.spec import AnalysisSpec
 from ..preprocessing.pipeline import FittablePreprocessor, Profile
 from ..methods import RandomForest, XGBoost, Lasso, ElasticNet, SparsePLSDA, Ordinal, PCA, NMF
+from ..methods import DIABLO, WGCNA
 from ..validation.resampling import (
     leave_one_group_out, leakage_free_cv, score_predictions,
     permutation_significance, bootstrap_stability, overfit_flag, permutation_resolution,
 )
-from .integration import detect_oversized_blocks
+from .integration import detect_oversized_blocks, reduce_block
 
 logger = logging.getLogger(__name__)
 
@@ -347,6 +348,173 @@ def systematic_assessment(
         "consensus": consensus,
         "discriminators": discriminators,
     }
+
+
+def _preprocess_block(df, omics_type, *, for_nmf=False, impute="metaboanalyst",
+                      min_obs_frac=None, input_state=None):
+    """Full-data preprocess one block to a complete matrix for DIABLO (descriptive)."""
+    prof = Profile(transform="log2", normalize="none", variance_min=1e-8) if for_nmf else None
+    pp = FittablePreprocessor(profile=prof, omics_type=omics_type, min_obs_frac=min_obs_frac,
+                              impute=impute, input_state=input_state)
+    return pp.fit_transform(df)
+
+
+def integration_assessment(
+    ds: OmicsDataset,
+    spec: AnalysisSpec,
+    *,
+    reducers=("pca", "nmf", "wgcna"),
+    n_factors: int = 5,
+    min_features: int = 200,
+    ratio: float = 5.0,
+    keepX_per_block: int = 20,
+    stability_bootstrap: int = 20,
+    seed: int = 0,
+    rscript: str = "Rscript",
+) -> dict:
+    """DIABLO multi-block integration: naive (raw blocks) vs reduced (per reducer).
+
+    For each declared integration group: fit DIABLO on the full data (descriptive --
+    block correlations + selected features/modules), then bootstrap the SELECTION to
+    measure recurrence. The headline contrast is naive (selects unstable individual
+    proteins) vs reduced (selects stable modules/factors). Reduced selections are
+    expanded back to member features via the reduction provenance (for GSEA).
+
+    R-backed (mixOmics DIABLO; WGCNA). Requires Rscript + mixOmics/WGCNA.
+    """
+    spec.validate(ds)
+    target = spec.resolve_target(ds)
+    tt = spec.target_type
+    groups_seed = spec.integration_sets()
+    if not groups_seed:
+        return {"groups": [], "note": "no integration_groups declared; integration skipped"}
+
+    results = []
+    for grp in groups_seed:
+        # align samples across the group's blocks + target + grouping
+        raw = {ly: spec.raw_sources.get(ly, ds.get(ly)) for ly in grp}
+        common = list(ds.sample_meta.index)
+        for df in raw.values():
+            common = [s for s in common if s in df.index]
+        common = [s for s in common if s in target.values.dropna().index]
+        raw = {ly: df.loc[common] for ly, df in raw.items()}
+        y = (target.values.loc[common].to_numpy(dtype=float) if tt == "continuous"
+             else target.values.loc[common].to_numpy())
+        groups = np.asarray(ds.sample_meta.loc[common, spec.grouping_column])
+        oversized = [ly for ly in grp if ds.blocks[ly].shape[1] > min_features and
+                     ds.blocks[ly].shape[1] > ratio * np.median([ds.blocks[o].shape[1] for o in grp if o != ly] or [1])]
+
+        variants = {}
+
+        # ---- naive: raw (z-scored) blocks ----
+        blocks_naive = {ly: _preprocess_block(raw[ly], ds.blocks[ly].omics_type,
+                                              impute="metaboanalyst", min_obs_frac=spec.min_obs_frac,
+                                              input_state=spec.input_state_for(ly)) for ly in grp}
+        variants["naive"] = {"blocks": blocks_naive, "membership": None, "reducer": None}
+
+        # ---- reduced: one variant per reducer (a failing reducer is recorded, not fatal) ----
+        for r in reducers:
+            try:
+                balanced, membership = {}, {}
+                for ly in grp:
+                    if ly in oversized:
+                        Z = _preprocess_block(raw[ly], ds.blocks[ly].omics_type, for_nmf=(r == "nmf"),
+                                              impute="metaboanalyst", min_obs_frac=spec.min_obs_frac,
+                                              input_state=spec.input_state_for(ly))
+                        reducer = (PCA(n_components=n_factors, random_state=seed) if r == "pca"
+                                   else NMF(n_components=n_factors, random_state=seed) if r == "nmf"
+                                   else WGCNA(rscript=rscript))
+                        scores, prov = reduce_block(Z, reducer, top_n=15)
+                        balanced[ly] = scores
+                        membership[ly] = prov
+                    else:
+                        balanced[ly] = _preprocess_block(raw[ly], ds.blocks[ly].omics_type,
+                                                         impute="metaboanalyst", min_obs_frac=spec.min_obs_frac,
+                                                         input_state=spec.input_state_for(ly))
+                variants[r] = {"blocks": balanced, "membership": membership, "reducer": r}
+            except Exception as e:
+                variants[r] = {"blocks": None, "membership": None, "reducer": r, "error": str(e)[:200]}
+
+        # ---- fit DIABLO per variant + bootstrap selection stability ----
+        variant_out = {}
+        for name, v in variants.items():
+            if v.get("blocks") is None:                       # reducer failed upstream
+                variant_out[name] = {"error": v.get("error", "reduction failed"), "reducer": v.get("reducer")}
+                continue
+            # sparse keepX so DIABLO selects a biomarker SUBSET per block (not everything);
+            # this is what makes the naive list a candidate "top features" set to test for stability
+            keepX = {ly: min(keepX_per_block, df.shape[1]) for ly, df in v["blocks"].items()}
+            try:
+                dia = DIABLO(keepX=keepX, rscript=rscript).fit(v["blocks"], y, target_type=tt)
+                block_corr = dia.block_correlations()
+                selected = dia.all_selected()
+            except Exception as e:
+                variant_out[name] = {"error": str(e)[:160]}
+                continue
+            stab = None
+            if stability_bootstrap and stability_bootstrap > 0:
+                blocks_v = v["blocks"]
+                def select_fn(rows, _b=blocks_v, _kx=keepX):
+                    # bootstrap duplicates rows -> uniquify the shared index so mixOmics
+                    # (which matches rownames across blocks) accepts the resample
+                    uidx = [f"b{i}" for i in range(len(rows))]
+                    bd = {}
+                    for ly, df in _b.items():
+                        sub = df.iloc[rows].copy(); sub.index = uidx; bd[ly] = sub
+                    m = DIABLO(keepX=_kx, rscript=rscript).fit(bd, y[rows], target_type=tt)
+                    return m.all_selected()["feature"].tolist()
+                stab = bootstrap_stability(select_fn, groups, n_bootstrap=stability_bootstrap, seed=seed)
+            variant_out[name] = {
+                "reducer": v["reducer"],
+                "block_correlations": block_corr,
+                "n_selected": int(len(selected)),
+                "selected": selected,
+                "membership": v["membership"],
+                "n_stable": (int(stab["stable"].sum()) if stab is not None else None),
+                "frac_stable": (float(stab["stable"].mean()) if stab is not None and len(stab) else None),
+                "stability_top": (stab.head(12).to_dict("records") if stab is not None else None),
+            }
+
+        # ---- discriminator: naive vs reduced by selection stability + parsimony ----
+        verdict = _integration_verdict(variant_out)
+        results.append({
+            "group": grp, "oversized": oversized, "target_type": tt,
+            "variants": variant_out, "discriminator": verdict,
+            "diablo_card": DIABLO().report_card({
+                "target_type": tt, "n_groups": int(len(set(groups.tolist()))),
+                "block_sizes": {ly: ds.blocks[ly].shape[1] for ly in grp},
+                "is_multiblock": True, "representation": "naive",
+                "grouping_has_repeats": len(set(groups.tolist())) < len(groups),
+            }),
+        })
+
+    return {"groups": results}
+
+
+def _integration_verdict(variant_out: dict, tol: float = 0.05) -> dict:
+    """Prefer the variant with the most stable selection; break ties by parsimony.
+
+    Honest wording: only call naive 'less stable' when it genuinely is (beyond tol);
+    when stability ties, prefer the reduced representation for parsimony /
+    interpretability (fewer, module/factor-level inputs) and say so.
+    """
+    scored = [(name, v) for name, v in variant_out.items()
+              if "error" not in v and v.get("frac_stable") is not None]
+    if not scored:
+        return {"note": "no stability computed (set stability_bootstrap>0) or all variants errored"}
+    best_name, best = max(scored, key=lambda kv: (kv[1]["frac_stable"], -kv[1]["n_selected"]))
+    naive = variant_out.get("naive", {})
+    msg = (f"prefer '{best_name}' integration (selection stability {best['frac_stable']:.0%}, "
+           f"{best['n_selected']} selected)")
+    if best_name != "naive" and naive.get("frac_stable") is not None:
+        if naive["frac_stable"] + tol < best["frac_stable"]:
+            msg += (f"; the naive raw selection is LESS stable ({naive['frac_stable']:.0%}) -- its "
+                    "individual-feature list is not trustworthy, the reduced modules/factors are.")
+        elif naive.get("n_selected", 0) > best["n_selected"]:
+            msg += (f"; at comparable stability the naive run selects {naive['n_selected']} individual "
+                    f"features vs {best['n_selected']} reduced modules/factors -- prefer the parsimonious, "
+                    "interpretable representation (expandable to member features for GSEA).")
+    return {"preferred": best_name, "verdict": msg}
 
 
 def _discriminate(panel: list) -> list:
