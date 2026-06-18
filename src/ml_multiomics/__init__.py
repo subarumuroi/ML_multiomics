@@ -17,6 +17,7 @@ from .core import (
     OmicsDataset,
     Block,
     TargetSpec,
+    AnalysisSpec,
     parse_bioreactor_ids,
     parse_delimited,
 )
@@ -29,7 +30,7 @@ __all__ = [
     # subpackages
     'core', 'preprocessing', 'methods', 'validation', 'analysis',
     # canonical foundation
-    'OmicsDataset', 'Block', 'TargetSpec',
+    'OmicsDataset', 'Block', 'TargetSpec', 'AnalysisSpec',
     'parse_bioreactor_ids', 'parse_delimited',
     'Preprocessor', 'Profile', 'DEFAULT_PROFILES',
     'BaseMethod', 'RandomForest', 'SparsePLSDA', 'DIABLO', 'NativeDIABLO',
