@@ -22,8 +22,10 @@ this port, otherwise treats every sample as independent.
 from .differential import compute_volcano, anova_tukey
 from .enrichment import ora
 from .integration import detect_oversized_blocks, reduce_block, balance_blocks
+from .systematic import systematic_assessment, FoldPipeline
 
 __all__ = [
     "compute_volcano", "anova_tukey", "ora",
     "detect_oversized_blocks", "reduce_block", "balance_blocks",
+    "systematic_assessment", "FoldPipeline",
 ]
