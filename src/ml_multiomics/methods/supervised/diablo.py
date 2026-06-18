@@ -183,6 +183,26 @@ class NativeDIABLO(BaseMethod):
         self.block_names_ = None
         self.feature_names_ = None
 
+    _PARAM_KEYS = ("n_components", "keepX", "design", "max_iter", "tol")
+
+    def describe(self) -> str:
+        return (
+            "EXPERIMENTAL native-Python DIABLO (NIPALS). Same goal as the R-backed DIABLO "
+            "(cross-block discriminant integration) but the multi-block design coupling is "
+            "UNVALIDATED. Use the R-backed `DIABLO` for analysis; this is for teaching/exploration."
+        )
+
+    def assumptions(self) -> list[str]:
+        return super().assumptions() + [
+            "Blocks share samples and comparable scaling; shared structure links blocks to target.",
+            "Implementation is unvalidated against mixOmics (variates match r=0.999; coupling unverified).",
+        ]
+
+    def divergences(self, context=None) -> list[str]:
+        return super().divergences(context) + [
+            "Experimental native port -- NOT validated against mixOmics; prefer the R-backed DIABLO."
+        ]
+
     def _prepare_blocks(self, blocks):
         """Normalize input to {name: array}, impute per block, return sample order."""
         if hasattr(blocks, "block_names") and hasattr(blocks, "common_samples"):

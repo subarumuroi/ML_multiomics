@@ -55,6 +55,43 @@ class DIABLO(BaseMethod):
         self.index_ = None
         self.cv_ = None
 
+    _PARAM_KEYS = ("n_components", "keepX", "design")
+
+    def describe(self) -> str:
+        return (
+            "DIABLO (reference mixOmics block.s/plsda via R): supervised MULTI-BLOCK integration "
+            "that finds latent components correlated ACROSS omics layers while discriminating the "
+            "target. Reports per-block variates, loadings, selected features, and between-block "
+            "correlations. Read it as: which coordinated cross-omics signature tracks the target; "
+            "selected features per block are the integration's drivers (judge by stability)."
+        )
+
+    def assumptions(self) -> list[str]:
+        return super().assumptions() + [
+            "Blocks share the same samples and are on comparable (z-scored) scales.",
+            "A shared low-dimensional structure links the blocks to the target.",
+            "Block sizes should be roughly balanced -- a much larger block can dominate the design.",
+        ]
+
+    def divergences(self, context=None) -> list[str]:
+        out = super().divergences(context)
+        ctx = context or {}
+        sizes = ctx.get("block_sizes") or {}
+        if len(sizes) >= 2:
+            mx, mn = max(sizes.values()), min(sizes.values())
+            if mn > 0 and mx / mn > 5:
+                out.append(
+                    f"Block sizes imbalanced ({mx} vs {mn}, >5x): the larger block can dominate the "
+                    "integration -> reduce it (WGCNA/PCA/NMF) before DIABLO. This is the 'naive' run "
+                    "if no reduction was applied."
+                    if ctx.get("representation", "naive") == "naive"
+                    else f"Block sizes were imbalanced ({mx} vs {mn}); the large block was reduced "
+                    "before integration to keep it from dominating."
+                )
+        if ctx.get("target_type") == "ordinal":
+            out.append("Ordinal target uses block.splsda (classification) -- order is discarded.")
+        return out
+
     # -- block prep (shared shape with NativeDIABLO) -----------------------
     def _prepare_blocks(self, blocks):
         if hasattr(blocks, "block_names") and hasattr(blocks, "common_samples"):

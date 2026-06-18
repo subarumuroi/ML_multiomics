@@ -53,6 +53,40 @@ class WGCNA(BaseMethod):
         self.index_ = None
         self.feature_names_ = None
 
+    _PARAM_KEYS = ("power", "network_type", "min_module_size", "merge_cut_height")
+
+    def describe(self) -> str:
+        return (
+            "WGCNA (reference R implementation): an UNSUPERVISED reducer that groups co-abundant "
+            "features into modules (data-driven count via dynamic tree cut) and summarises each "
+            "module by its eigengene. Used to reduce a large block to a few biologically coherent "
+            "module profiles before integration. Read a module as a co-regulated feature program; "
+            "the eigengene is its representative sample profile."
+        )
+
+    def assumptions(self) -> list[str]:
+        return super().assumptions() + [
+            "Co-abundance (correlation) structure reflects biology; approx. scale-free topology.",
+            "Adequate sample size (WGCNA expects n >= ~15-20); at small n modules are exploratory.",
+        ]
+
+    def divergences(self, context=None) -> list[str]:
+        out = super().divergences(context)
+        ctx = context or {}
+        ng = ctx.get("n_groups")
+        if ng is not None and ng < 15:
+            out.append(
+                f"Only {ng} units (< WGCNA's ~15-20): module detection is exploratory regardless "
+                "of implementation."
+            )
+        mf = ctx.get("missing_frac")
+        if mf and mf > 0.2:
+            out.append(
+                "Correlation-based: imputed near-constant features can create spurious modules; a "
+                "detection filter (min_obs_frac) is applied before WGCNA."
+            )
+        return out
+
     def fit(self, X, y=None, feature_names=None, target_type=None) -> "WGCNA":
         Xp = self._prepare_X(X)
         if isinstance(Xp, pd.DataFrame):

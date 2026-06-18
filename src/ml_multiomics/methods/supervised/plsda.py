@@ -128,6 +128,30 @@ class SparsePLSDA(BaseMethod):
         self.fit_ = None
         self.feature_names_ = None
 
+    _PARAM_KEYS = ("n_components", "keepX", "max_iter", "tol")
+
+    def describe(self) -> str:
+        return (
+            "Sparse PLS discriminant analysis: supervised latent components that separate classes, "
+            "with per-component feature selection (keepX). Reports VIP / selected features and, via "
+            "stability_selection(), a bootstrap selection frequency. Read the components as the "
+            "class-separating axes and prefer features with high selection frequency."
+        )
+
+    def assumptions(self) -> list[str]:
+        return super().assumptions() + [
+            "Class structure is captured by a few linear latent components.",
+            "Sparse selection (keepX) picks one of a set of correlated features -- use the "
+            "stability frequency, not a single run, to judge a feature.",
+        ]
+
+    def divergences(self, context=None) -> list[str]:
+        out = super().divergences(context)
+        ctx = context or {}
+        if ctx.get("target_type") == "ordinal":
+            out.append("Ordinal target treated as unordered classes -- the ordering is not used.")
+        return out
+
     def fit(self, X, y, feature_names=None, target_type=None) -> "SparsePLSDA":
         if y is None:
             raise ValueError("SparsePLSDA requires a target y.")

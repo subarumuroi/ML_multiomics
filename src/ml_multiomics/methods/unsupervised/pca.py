@@ -33,6 +33,32 @@ class PCA(BaseMethod):
         self.feature_names_ = None
         self.index_ = None
 
+    _PARAM_KEYS = ("n_components", "random_state")
+
+    def describe(self) -> str:
+        return (
+            "Principal component analysis: an UNSUPERVISED reducer that projects features onto "
+            "orthogonal axes of maximal variance. Used to shrink a large block to a few factors "
+            "(reduce->predict). Read PCs as variance directions and loadings as feature weights -- "
+            "note PCs capture variance, which is not necessarily the variance related to the target."
+        )
+
+    def assumptions(self) -> list[str]:
+        return super().assumptions() + [
+            "Variance equals signal; directions are linear and orthogonal.",
+            "Correlation/covariance based -- sensitive to scaling and to spurious correlation.",
+        ]
+
+    def divergences(self, context=None) -> list[str]:
+        out = super().divergences(context)
+        mf = (context or {}).get("missing_frac")
+        if mf and mf > 0.2:
+            out.append(
+                "Imputed near-constant features can manufacture spurious components; a detection "
+                "filter (min_obs_frac) is recommended before PCA."
+            )
+        return out
+
     def fit(self, X, y=None, feature_names=None, target_type=None) -> "PCA":
         Xp = self._prepare_X(X)
         if isinstance(Xp, pd.DataFrame):

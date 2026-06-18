@@ -57,6 +57,32 @@ class Ordinal(BaseMethod):
         self.feature_names_ = None
         self.classes_ = None
 
+    _PARAM_KEYS = ("model_type", "alpha", "order")
+
+    def describe(self) -> str:
+        return (
+            "Ordinal regression (mord) -- an ordered logistic model that RESPECTS the category "
+            "order (e.g. Green < Ripe < Over). Reports ordinal MAE (distance in ranks), which a "
+            "plain classifier cannot. Read it as: does the model place samples in the right order, "
+            "and by how many steps is it off."
+        )
+
+    def assumptions(self) -> list[str]:
+        return super().assumptions() + [
+            "The target is genuinely ordered and the order in `order` is correct.",
+            "A single latent score underlies the ordinal categories (proportional-odds-style).",
+        ]
+
+    def divergences(self, context=None) -> list[str]:
+        out = super().divergences(context)
+        ctx = context or {}
+        if ctx.get("target_type") and ctx["target_type"] != "ordinal":
+            out.append(
+                f"Applied to a {ctx['target_type']} target while assuming an order -- only valid "
+                "if that target is truly ordered."
+            )
+        return out
+
     def _encode(self, y) -> np.ndarray:
         """Map ordered category labels to 0..k-1 (using self.order if given)."""
         y = np.asarray(y)

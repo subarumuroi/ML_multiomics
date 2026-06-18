@@ -321,6 +321,26 @@ class NativeWGCNA(BaseMethod):
         self.index_ = None
         self._X = None
 
+    _PARAM_KEYS = ("power", "corr_method", "network_type", "min_module_size", "merge_cut_height")
+
+    def describe(self) -> str:
+        return (
+            "EXPERIMENTAL native-Python WGCNA. Co-abundance modules + eigengenes like the R-backed "
+            "WGCNA, but uses a STATIC tree cut (not WGCNA's dynamic tree cut) and is UNVALIDATED. "
+            "Use the R-backed `WGCNA` for analysis; kept for portability/understanding."
+        )
+
+    def assumptions(self) -> list[str]:
+        return super().assumptions() + [
+            "Co-abundance structure reflects biology; adequate sample size.",
+            "Static cut differs from WGCNA's dynamic tree cut -- module boundaries are not equivalent.",
+        ]
+
+    def divergences(self, context=None) -> list[str]:
+        return super().divergences(context) + [
+            "Experimental native port -- NOT validated against the R WGCNA package; prefer R-backed WGCNA."
+        ]
+
     @staticmethod
     def _encode_trait(y):
         if y is None:

@@ -53,6 +53,31 @@ class XGBoost(BaseMethod):
         self.task_ = None
         self._le = None
 
+    def hyperparams(self) -> dict:
+        return {"task": self.task, **self.params}
+
+    def describe(self) -> str:
+        return (
+            "Gradient-boosted trees (XGBoost) with conservative small-n defaults (shallow trees, "
+            "low learning rate, column subsampling). Uniquely, it LEARNS missing-value split "
+            "directions natively, so it uses the raw NaN-carrying matrix and can treat missingness "
+            "(below-detection) as signal. Reports gain-based importances; read with stability."
+        )
+
+    def assumptions(self) -> list[str]:
+        return super().assumptions() + [
+            "Missingness may be informative (MNAR-aware): no imputation is applied.",
+            "Tree ensembles can still overfit at very small n despite regularization.",
+        ]
+
+    def divergences(self, context=None) -> list[str]:
+        out = super().divergences(context)
+        out.append(
+            "Runs on the un-imputed matrix (handles_missing=True): NOT comparable to the imputed "
+            "methods on identical inputs -- it is the no-imputation reference in the sensitivity set."
+        )
+        return out
+
     def _resolve_task(self, y, target_type=None) -> str:
         if self.task != "auto":
             return self.task
