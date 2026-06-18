@@ -39,15 +39,17 @@ _RSCRIPT = Path(__file__).resolve().parents[2] / "rscripts" / "diablo.R"
 class DIABLO(BaseMethod):
     handles_missing = False
     requires_target = True
-    supported_targets = ("nominal", "ordinal")
+    supported_targets = ("nominal", "ordinal", "continuous")
 
     def __init__(self, n_components: int = 2, keepX=None, design: float = 0.1,
-                 impute: str = "metaboanalyst", rscript: str = "Rscript"):
+                 keepY=None, impute: str = "metaboanalyst", rscript: str = "Rscript"):
         super().__init__(impute=impute)
         self.n_components = n_components
         self.keepX = keepX          # dict {block: int|list} or None (full)
         self.design = design
+        self.keepY = keepY          # int features kept from a continuous Y (block.spls)
         self.rscript = rscript
+        self.target_type_ = None    # set at fit/cross_validate; drives splsda vs spls
         self.block_names_ = None
         self.variates_ = None       # {block: ndarray (n x ncomp)}
         self.loadings_ = None       # {block: DataFrame (features x ncomp)}
@@ -55,7 +57,7 @@ class DIABLO(BaseMethod):
         self.index_ = None
         self.cv_ = None
 
-    _PARAM_KEYS = ("n_components", "keepX", "design")
+    _PARAM_KEYS = ("n_components", "keepX", "design", "keepY")
 
     def describe(self) -> str:
         return (
@@ -128,7 +130,9 @@ class DIABLO(BaseMethod):
                 keepX = {k: (list(v) if isinstance(v, (list, tuple)) else int(v))
                          for k, v in keepX.items()}
             config = {"blocks": list(bd), "ncomp": int(self.n_components),
-                      "design": float(self.design), "keepX": keepX, "cv": bool(cv)}
+                      "design": float(self.design), "keepX": keepX, "cv": bool(cv),
+                      "target_type": self.target_type_ or "nominal",
+                      "keepY": None if self.keepY is None else int(self.keepY)}
             (work / "config.json").write_text(json.dumps(config))
 
             res = subprocess.run([self.rscript, str(_RSCRIPT), str(work)],
@@ -156,6 +160,7 @@ class DIABLO(BaseMethod):
     def fit(self, blocks, y, feature_names=None, target_type=None) -> "DIABLO":
         if target_type is not None:
             self._check_target(target_type)
+        self.target_type_ = target_type or self.target_type_ or "nominal"
         bd, index = self._prepare_blocks(blocks)
         y = self._align_y(y, index)
         self.block_names_ = list(bd)
@@ -190,10 +195,16 @@ class DIABLO(BaseMethod):
         return pd.DataFrame(rows)
 
     def cross_validate(self, blocks, y, groups=None, target_type=None) -> dict:
-        """Leave-one-out CV error via mixOmics perf() (samples assumed independent)."""
+        """Leave-one-out CV via mixOmics perf() (samples assumed independent).
+
+        Classification -> error rate; regression (block.spls) -> MSEP/R2/Q2. This
+        is a secondary sanity check; the engine drives leakage-free grouped CV.
+        """
+        self.target_type_ = target_type or self.target_type_ or "nominal"
         bd, index = self._prepare_blocks(blocks)
         y = self._align_y(y, index)
         _, _, _, cv_obj = self._run_r(bd, y, index, cv=True)
         self.cv_ = cv_obj
-        return {"loo_error_rate": cv_obj, "note": "mixOmics perf(validation='loo'); "
+        metric = "regression measures (MSEP/R2/Q2)" if self.target_type_ == "continuous" else "error rate"
+        return {"perf": cv_obj, "note": f"mixOmics perf(validation='loo') {metric}; "
                 "samples treated as independent (correct when each sample is its own unit)"}
