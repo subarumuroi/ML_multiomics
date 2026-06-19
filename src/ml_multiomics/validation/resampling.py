@@ -165,6 +165,8 @@ def leakage_free_cv(X, y, groups, fit_predict_fn, task: str) -> dict:
     preds = leakage_free_cv_predict(X, y, groups, fit_predict_fn)
     if task == "regression":
         preds = preds.astype(float)
+    else:
+        preds = np.array(list(preds))   # reinfer concrete dtype: object[int] -> int (sklearn-safe)
     out = score_predictions(y, preds, task)
     out["predictions"] = preds
     out["true"] = np.asarray(y)

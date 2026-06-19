@@ -1,11 +1,11 @@
 ---
-title: "Banana ripening — Omics & Machine Learning"
-subtitle: "Multi-omics integration of proteomics, metabolomics, amino acids & volatiles"
+title: "Banana ripening: standard analysis -> integrative ML"
+subtitle: "ml_multiomics on arbitrary external data -- declared, self-documenting, leakage-free"
 author: "ml_multiomics"
 format:
   html:
     toc: true
-    toc-depth: 2
+    toc-depth: 3
     code-fold: true
     embed-resources: true
 jupyter: python3
@@ -14,12 +14,25 @@ execute:
   cache: false
 ---
 
-An **interpretation / hypothesis-generation** report (not a predictive
-leaderboard — at n=9 a deployable predictor isn't the goal). Ordered categories
-(Green < Ripe < Overripe); samples are independent fruit, so cross-validation is
-leave-one-out and serves as a **guardrail**, not a performance claim. Multi-omics
-integration uses **R mixOmics DIABLO** (the reference implementation); reductions
-use PCA/NMF (sklearn). See `docs/ASSUMPTIONS_AND_CHOICES.md`.
+Banana ripening is the package's **arbitrary external data** demonstrator: nothing about it is
+hardcoded in the library -- the report DECLARES an `AnalysisSpec` and the library executes it.
+Four omics blocks (proteomics, metabolomics, amino-acids, aromatics) over 9 fruit, 3 ripening
+stages x 3 replicates; each fruit is its own independent unit (leave-one-out), and the target is
+the **ORDERED** stage (Green < Ripe < Over).
+
+It also demonstrates **reverting an upstream step before ML**: the lab shipped a pre-imputed
+proteomics file (used by the standard-analysis section), but for ML we revert to the raw
+un-imputed proteomics (via the spec's `raw_sources`) so per-fold imputation is leakage-free from
+raw. As everywhere: signal = permutation vs the resolution floor, trust = stability, CV = a binary
+overfit flag only.
+
+```{python}
+#| echo: false
+#| output: false
+#| tags: [parameters]
+n_permutations = 99
+stability_bootstrap = 20
+```
 
 ```{python}
 #| echo: false
@@ -31,9 +44,52 @@ for cand in (HERE, HERE / "examples" / "banana_report"):
     if (cand / "analysis.py").exists():
         sys.path.insert(0, str(cand)); break
 import analysis
-import matplotlib.pyplot as plt
-from IPython.display import Markdown
-res = analysis.run_banana_analysis()
+import pandas as pd
+from IPython.display import Markdown, display
+
+res = analysis.run_banana_report(
+    n_permutations=n_permutations, stability_bootstrap=stability_bootstrap,
+    reducers=("pca", "nmf"), run_integration=True)   # WGCNA omitted at n=9 (needs >= ~15-20)
+
+def panel_table(systematic):
+    rows = []
+    for r in systematic["panel"]:
+        if "error" in r:
+            rows.append({"approach": r["approach"], "note": "error: " + r["error"][:40]}); continue
+        cv = r["cv"]; perm = r["permutation"]
+        rows.append({
+            "approach": r["approach"], "n_inputs": r["n_inputs"],
+            **{k: round(cv[k], 3) for k in ("balanced_accuracy", "accuracy", "r2", "rmse", "mae") if k in cv},
+            "perm_p": round(perm["p_value"], 3) if perm.get("p_value") == perm.get("p_value") else None,
+            "signal?": perm.get("significant"), "overfit?": r["overfit"]["overfit"], "n_stable": r["n_stable"],
+        })
+    return pd.DataFrame(rows)
+
+def cards_md(systematic, limit=5):
+    out = []
+    for r in systematic["panel"][:limit]:
+        if "error" in r:
+            continue
+        c = r["report_card"]
+        out.append(f"**{c['method']}** -- {c['describe']}\n")
+        out.append("- _assumptions:_ " + "; ".join(c["assumptions"]))
+        if c["divergences"]:
+            out.append("- _divergences (this data):_ " + "; ".join(c["divergences"]))
+        out.append("")
+    return "\n".join(out)
+
+def integration_md(integ):
+    g = integ["groups"][0]
+    lines = [f"Integration group: **{' + '.join(g['group'])}** (oversized -> reduced: {g['oversized']})\n"]
+    lines.append("| variant | n selected | selection stability |")
+    lines.append("|---|---|---|")
+    for nm, v in g["variants"].items():
+        if "error" in v:
+            lines.append(f"| {nm} | -- | error: {v['error'][:40]} |"); continue
+        fs = f"{v['frac_stable']:.0%}" if v.get("frac_stable") is not None else "n/a"
+        lines.append(f"| {nm} | {v['n_selected']} | {fs} |")
+    lines.append(f"\n**Verdict:** {g['discriminator'].get('verdict', g['discriminator'].get('note'))}")
+    return "\n".join(lines)
 ```
 
 # Overview
@@ -41,109 +97,101 @@ res = analysis.run_banana_analysis()
 ```{python}
 #| echo: false
 Markdown(
-    f"- **Samples:** {res['n_samples']} bananas (independent units; leave-one-out CV)\n"
-    f"- **Stages:** " + ", ".join(f"{k} (n={v})" for k, v in res['stage_counts'].items()) +
-    f"  — ordered Green < Ripe < Overripe\n"
-    f"- **Blocks:** " + ", ".join(f"{b} ({p} features)" for b, p in res['blocks'].items()) + "\n"
-    f"- **Statistical resolution:** finest achievable permutation p-value "
-    f"≈ {res['resolution']['finest_two_sided_p']:.2g} "
-    f"({res['resolution']['n_distinct_arrangements']:,} label arrangements)\n"
-    f"- **Null baseline:** majority-class accuracy = {res['baseline_majority_acc']:.0%}"
+    f"- **Independent units:** {res['n_samples']} fruit (leave-one-out)\n"
+    f"- **Target:** ripening stage, ORDINAL (Green < Ripe < Over); counts {res['stage_counts']}\n"
+    f"- **Predictor blocks:** " + ", ".join(f"{b} ({n})" for b, n in res['block_sizes'].items()) + "\n"
+    f"- proteomics dwarfs the others, so it is **auto-reduced** before integration\n"
+    f"- **Upstream revert:** ML uses the RAW un-imputed proteomics (the standard section uses the "
+    f"lab's pre-imputed file) -- declared via the spec's raw_sources"
 )
 ```
 
-# Part 1 — Multi-omics integration (DIABLO, R mixOmics)
-
-DIABLO finds latent components correlated **across** the omics blocks while
-separating ripening stage, and selects a sparse set of features per block.
+# Part 1 -- Standard analysis
 
 ```{python}
 #| echo: false
-Markdown("**Block-to-block correlation (component 1 variates):** how strongly the "
-         "blocks agree on the dominant axis of variation.")
+res["standard"]["qc"]
 ```
 
 ```{python}
 #| echo: false
-res["diablo_block_correlations"].round(3)
+Markdown(f"**Differential expression** across stages, on {res['standard']['de_n_units']} "
+         "independent fruit (Welch t on log + BH). Top features by q-value:")
 ```
 
 ```{python}
 #| echo: false
-Markdown("**Selected features per block** (sparse DIABLO loadings). These are the "
-         "cross-omics features whose coordinated change tracks ripening:")
+v = res["standard"]["de_volcano"]
+v.reindex(v["qvalue"].sort_values().index).head(12)[["contrast", "feature", "log2fc", "pvalue", "qvalue"]]
 ```
 
 ```{python}
 #| echo: false
-sel = res["diablo_selected"]
-sel.groupby(["block", "component"]).size().rename("n_selected").reset_index()
-```
-
-# Part 2 — Reducing the large proteomics block
-
-Proteomics (~5,000 features) dwarfs the other blocks (10s of features). Collapsing
-it to a few factors **balances the blocks** and yields interpretable axes — this
-is principled preprocessing, described, not an arbitrary modelling choice.
-
-```{python}
-#| echo: false
-Markdown("**PCA variance explained** (proteomics):")
+Markdown("**GSEA-ready ranked list** (top of signed -log10 p; for the external R GSEA path):")
 ```
 
 ```{python}
 #| echo: false
-res["proteomics_pca_var"].round(3)
+res["standard"]["gsea_ranked"].head(10).round(3).to_frame("rank_stat")
+```
+
+# === ML divergence point ===
+
+Beyond here: revert proteomics to raw, per-fold preprocessing (train-only), auto-reduction, and
+integration. CV is a binary overfitting sanity flag only.
+
+# Part 2 -- Ripening-stage assessment (ordinal)
+
+Every applicable method on the representation it is valid on; the Ordinal model respects the
+stage order, others treat it as nominal (a declared divergence).
+
+```{python}
+#| echo: false
+panel_table(res["stage"]["systematic"])
 ```
 
 ```{python}
 #| echo: false
-Markdown("**NMF factor 1 — top proteins** (parts-based, non-negative):")
+Markdown("**Reduce-vs-direct verdicts** (signal + stability + parsimony):")
+for d in res["stage"]["systematic"]["discriminators"]:
+    display(Markdown(f"- {d['verdict']}"))
 ```
 
 ```{python}
 #| echo: false
-res["proteomics_nmf_factor1_top"].round(4)
+Markdown("**Cross-method consensus** (features stable across multiple approaches):")
 ```
-
-# Part 3 — Descriptive model panel (CV as a guardrail)
-
-Each approach under leave-one-out CV. **This is not a leaderboard** — at n=9 a
-single CV score is noisy; read it as "does this clear the majority baseline
-(~33%) and not obviously overfit?", not as a precise ranking. For the ordered
-target, MAE (ordinal distance) is the honest error.
 
 ```{python}
 #| echo: false
-res["panel"].round(3)
+res["stage"]["systematic"]["consensus"].head(12)
 ```
 
-# Part 4 — How much to trust this
+## DIABLO integration (naive vs reduced)
 
 ```{python}
 #| echo: false
-r = res["resolution"]
+Markdown(integration_md(res["stage"]["integration"]))
+```
+
+## What each model assumes (and where it diverges, on THIS data)
+
+```{python}
+#| echo: false
+Markdown(cards_md(res["stage"]["systematic"]))
+```
+
+# Part 3 -- How to read this
+
+```{python}
+#| echo: false
 Markdown(
-    f"- **n = {res['n_samples']}** — treat everything as **exploratory** and "
-    f"cross-check methods/biology.\n"
-    f"- **Easy structure:** the three ripening stages are strongly separated, so "
-    f"most methods reach high accuracy — that means the *signal is clear*, not "
-    f"that any one model is 'best'.\n"
-    f"- **Resolution floor:** the smallest p-value this design can produce is "
-    f"≈ {r['finest_two_sided_p']:.2g}; report effect size first.\n"
-    f"- **Validated tools:** DIABLO = R mixOmics::block.splsda; reductions =\n"
-    f"  PCA/NMF (sklearn). Data z-scored once; no double-scaling; NMF ran on\n"
-    f"  non-negative log2 data.\n"
-    f"- **Independent unit:** each banana is its own sample (assumed different\n"
-    f"  fruit per stage, not one fruit tracked over time). If that assumption is\n"
-    f"  wrong (same fruit), CV should group by fruit instead."
+    "- At n=9 a single CV score is noise; **signal** is the permutation p against the design's "
+    "resolution floor, **trust** is stability, and the deliverable is the stable features/modules.\n"
+    "- The naive integration's individual-feature list is typically unstable; prefer the reduced, "
+    "interpretable modules/factors (expandable to member features for enrichment).\n"
+    "- The whole analysis was declared in an AnalysisSpec (layer roles, ordinal target, grouping, "
+    "the proteomics raw-revert) and is provenance-tracked -- follow and revise exactly what was done.\n"
+    "- This is arbitrary external data: the library has no banana-specific code."
 )
 ```
-
-# Methods
-
-Multi-omics integration via the reference R implementation (mixOmics DIABLO);
-dimensionality reduction via PCA / NMF (sklearn); ordered classification via
-ordinal regression (`mord`); Random Forest / sparse PLS-DA (sklearn / native).
-All cross-validation is leave-one-out over independent samples; preprocessing is
-missing-aware log + z-score (scaled once).

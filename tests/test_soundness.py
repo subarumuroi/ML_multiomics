@@ -174,6 +174,27 @@ def test_systematic_assessment_smoke():
     assert "report_card" in row and "permutation" in row and "overfit" in row
 
 
+def test_systematic_assessment_ordinal():
+    # ordinal target must be integer-encoded so the Ordinal model + classifiers agree
+    rng = np.random.RandomState(7)
+    order = ["Green", "Ripe", "Over"]
+    idx = [f"{s}{i}" for s in order for i in range(3)]      # 9 fruit, each its own unit
+    stage = [s for s in order for _ in range(3)]
+    X = pd.DataFrame(rng.rand(9, 15) + 1, index=idx, columns=[f"p{i}" for i in range(15)])
+    X["p0"] = X["p0"] + np.repeat([0, 5, 10], 3)            # planted stage signal
+    ds = OmicsDataset("ord")
+    ds.add_block("prot", X, omics_type="proteomics")
+    meta = pd.DataFrame({"stage": stage, "unit": idx}, index=idx)
+    ds.set_sample_metadata(meta)
+    spec = AnalysisSpec(grouping_column="unit", roles={"prot": "predictor"},
+                        target_type="ordinal", target_column="stage", ordinal_order=order)
+    out = systematic_assessment(ds, spec, reducers=(), n_permutations=9, stability_bootstrap=4, seed=0)
+    methods = {r["method"] for r in out["panel"] if "error" not in r}
+    assert "Ordinal" in methods                              # ordinal model ran without a metric clash
+    for r in out["panel"]:
+        assert "error" not in r, f"{r.get('approach')}: {r.get('error')}"
+
+
 def test_standard_de_aggregates_to_units():
     rng = np.random.RandomState(5)
     units = [f"{s}{i}" for s in ["G", "R"] for i in range(3)]

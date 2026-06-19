@@ -203,8 +203,12 @@ def systematic_assessment(
     yvals = target.values.loc[common]
     if task == "regression":
         y = yvals.to_numpy(dtype=float)
+    elif spec.target_type == "ordinal" and target.ordinal_order:
+        # integer-encode ordered classes (0..k-1): every classifier handles int labels,
+        # and the Ordinal model needs them -- avoids mixing string labels with int preds
+        y = target.encoded().loc[common].to_numpy()
     else:
-        y = yvals.to_numpy()   # labels as-is; Ordinal/classifiers handle them (order via factory)
+        y = yvals.to_numpy()
     groups = np.asarray(ds.sample_meta.loc[common, spec.grouping_column])
 
     oversized = detect_oversized_blocks(ds, min_features=min_features, ratio=ratio)
@@ -406,8 +410,12 @@ def integration_assessment(
             common = [s for s in common if s in df.index]
         common = [s for s in common if s in target.values.dropna().index]
         raw = {ly: df.loc[common] for ly, df in raw.items()}
-        y = (target.values.loc[common].to_numpy(dtype=float) if tt == "continuous"
-             else target.values.loc[common].to_numpy())
+        if tt == "continuous":
+            y = target.values.loc[common].to_numpy(dtype=float)
+        elif tt == "ordinal" and target.ordinal_order:
+            y = target.encoded().loc[common].to_numpy()
+        else:
+            y = target.values.loc[common].to_numpy()
         groups = np.asarray(ds.sample_meta.loc[common, spec.grouping_column])
         oversized = [ly for ly in grp if ds.blocks[ly].shape[1] > min_features and
                      ds.blocks[ly].shape[1] > ratio * np.median([ds.blocks[o].shape[1] for o in grp if o != ly] or [1])]
