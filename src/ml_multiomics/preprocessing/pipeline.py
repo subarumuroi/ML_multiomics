@@ -187,19 +187,34 @@ class FittablePreprocessor:
         tfn = _TRANSFORMS.get(self.profile.transform)
         return tfn(df) if tfn is not None else df
 
+    @staticmethod
+    def _np_fill(df: pd.DataFrame, fill: pd.Series) -> pd.DataFrame:
+        """Fill every NaN with a per-feature value, vectorized in numpy.
+
+        Chained ``df.fillna(Series)`` on a wide frame is O(cols) Python-level setitem
+        (the dominant per-fold cost). One numpy scatter-fill is ~100x faster.
+        """
+        arr = df.to_numpy(dtype=float, copy=True)
+        r, c = np.where(np.isnan(arr))
+        if len(r):
+            arr[r, c] = np.asarray(fill.reindex(df.columns), dtype=float)[c]
+        return pd.DataFrame(arr, index=df.index, columns=df.columns)
+
     def _complete(self, df: pd.DataFrame, is_train: bool) -> pd.DataFrame:
         """Fill missing values per the strategy using params learned in fit().
 
         Fill params (impute_fills_ / train_means_) are learned in fit() regardless of
         whether the train fold itself had gaps, so a test fold with NaN never hits a
-        None fill. Cascading .fillna() guards features with no positive/observed value.
+        None fill. Combining the fallbacks at the Series level (length n_features) keeps
+        features with no positive/observed value covered without a wide-frame fillna.
         """
         if self.impute is None or not bool(df.isna().any().any()):
             return df
         if self.impute == "metaboanalyst":
-            return df.fillna(self.impute_fills_).fillna(self.train_means_).fillna(0.0)
+            fill = self.impute_fills_.reindex(df.columns).fillna(self.train_means_).fillna(0.0)
+            return self._np_fill(df, fill)
         if self.impute in ("remove_all_missing", "remove"):
-            return df.fillna(self.train_means_).fillna(0.0)
+            return self._np_fill(df, self.train_means_.fillna(0.0))
         if self.impute == "imputepca":
             if is_train:
                 try:
@@ -207,8 +222,8 @@ class FittablePreprocessor:
                 except Exception as e:  # tiny/degenerate fold -> mean fallback
                     self.provenance.record("impute_fallback", {"reason": str(e)[:60]},
                                            note="imputePCA failed; train mean fill")
-                    return df.fillna(self.train_means_).fillna(0.0)
-            return df.fillna(self.train_means_).fillna(0.0)  # test: leakage-free train-mean fill
+                    return self._np_fill(df, self.train_means_.fillna(0.0))
+            return self._np_fill(df, self.train_means_.fillna(0.0))  # test: leakage-free train-mean fill
         return df
 
     # -- API ---------------------------------------------------------------
@@ -243,43 +258,40 @@ class FittablePreprocessor:
             note="skipped: already transformed upstream" if self._already_transformed else "",
         )
 
-        # detection filter (method-aware; max_missing_frac = 1 - min_obs_frac)
-        cols = list(df.columns)
+        # detection filter (method-aware; max_missing_frac = 1 - min_obs_frac).
+        # Vectorized boolean mask -- a per-column list comprehension over thousands of
+        # features was the dominant per-fold cost after the imputer loop.
         if self.min_obs_frac is not None:
+            n0 = df.shape[1]
             obs = 1.0 - df.isna().mean(axis=0)
-            cols = [c for c in cols if obs[c] >= self.min_obs_frac]
+            df = df.loc[:, obs >= self.min_obs_frac]
             self.provenance.record("detection_filter", {"min_obs_frac": self.min_obs_frac},
-                                   in_obj=df, out_obj=df[cols], fit_on_train=True,
-                                   note=f"kept {len(cols)}/{df.shape[1]}")
-        df = df[cols]
+                                   in_obj=df, fit_on_train=True, note=f"kept {df.shape[1]}/{n0}")
 
         # variance filter
         if self.profile.variance_min is not None:
+            n0 = df.shape[1]
             var = df.var(axis=0, ddof=1)
-            cols = [c for c in df.columns if var.get(c, 0.0) > self.profile.variance_min]
+            df = df.loc[:, var > self.profile.variance_min]
             self.provenance.record("variance_filter", {"min_variance": self.profile.variance_min},
-                                   in_obj=df, out_obj=df[cols], fit_on_train=True,
-                                   note=f"kept {len(cols)}/{df.shape[1]}")
-            df = df[cols]
+                                   in_obj=df, fit_on_train=True, note=f"kept {df.shape[1]}/{n0}")
 
         # complete-case: further restrict to columns with no train missing
         if self.impute in ("remove_all_missing", "remove"):
-            cols = [c for c in df.columns if not df[c].isna().any()]
-            self.provenance.record("complete_case", {}, in_obj=df, out_obj=df[cols],
-                                   fit_on_train=True, note=f"kept {len(cols)} complete features")
-            df = df[cols]
+            n0 = df.shape[1]
+            df = df.loc[:, ~df.isna().any(axis=0)]
+            self.provenance.record("complete_case", {}, in_obj=df, fit_on_train=True,
+                                   note=f"kept {df.shape[1]} complete features (of {n0})")
 
         self.keep_cols_ = list(df.columns)
         # train means BEFORE imputation (fallback) -- skipna
         self.train_means_ = df.mean(axis=0)
         # learn metaboanalyst per-feature fills on TRAIN unconditionally, so transform()
-        # can fill a test-fold gap even when the train fold had none
+        # can fill a test-fold gap even when the train fold had none.
+        # Vectorized (0.2 x min positive per feature): a per-column Python loop here cost
+        # ~1.3 s on 4375 features and ran inside every fold of every permutation.
         if self.impute == "metaboanalyst":
-            fills = {}
-            for c in df.columns:
-                pos = df[c][df[c] > 0]
-                fills[c] = float(0.2 * pos.min()) if not pos.empty else float("nan")
-            self.impute_fills_ = pd.Series(fills)
+            self.impute_fills_ = 0.2 * df.where(df > 0).min(axis=0)
 
         completed = self._complete(df, is_train=True)
         if self.impute is not None:
