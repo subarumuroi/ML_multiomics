@@ -188,20 +188,18 @@ class FittablePreprocessor:
         return tfn(df) if tfn is not None else df
 
     def _complete(self, df: pd.DataFrame, is_train: bool) -> pd.DataFrame:
-        """Fill missing values per the strategy; learn params on the train pass."""
+        """Fill missing values per the strategy using params learned in fit().
+
+        Fill params (impute_fills_ / train_means_) are learned in fit() regardless of
+        whether the train fold itself had gaps, so a test fold with NaN never hits a
+        None fill. Cascading .fillna() guards features with no positive/observed value.
+        """
         if self.impute is None or not bool(df.isna().any().any()):
             return df
         if self.impute == "metaboanalyst":
-            if is_train:
-                fills = {}
-                for c in df.columns:
-                    pos = df[c][df[c] > 0]
-                    fills[c] = 0.2 * pos.min() if not pos.empty else 0.0
-                self.impute_fills_ = pd.Series(fills)
-            return df.fillna(self.impute_fills_)
+            return df.fillna(self.impute_fills_).fillna(self.train_means_).fillna(0.0)
         if self.impute in ("remove_all_missing", "remove"):
-            # complete-case columns are chosen in fit; any residual test gap -> train mean
-            return df.fillna(self.train_means_)
+            return df.fillna(self.train_means_).fillna(0.0)
         if self.impute == "imputepca":
             if is_train:
                 try:
@@ -209,8 +207,8 @@ class FittablePreprocessor:
                 except Exception as e:  # tiny/degenerate fold -> mean fallback
                     self.provenance.record("impute_fallback", {"reason": str(e)[:60]},
                                            note="imputePCA failed; train mean fill")
-                    return df.fillna(self.train_means_)
-            return df.fillna(self.train_means_)  # test: leakage-free train-mean fill
+                    return df.fillna(self.train_means_).fillna(0.0)
+            return df.fillna(self.train_means_).fillna(0.0)  # test: leakage-free train-mean fill
         return df
 
     # -- API ---------------------------------------------------------------
@@ -274,6 +272,14 @@ class FittablePreprocessor:
         self.keep_cols_ = list(df.columns)
         # train means BEFORE imputation (fallback) -- skipna
         self.train_means_ = df.mean(axis=0)
+        # learn metaboanalyst per-feature fills on TRAIN unconditionally, so transform()
+        # can fill a test-fold gap even when the train fold had none
+        if self.impute == "metaboanalyst":
+            fills = {}
+            for c in df.columns:
+                pos = df[c][df[c] > 0]
+                fills[c] = float(0.2 * pos.min()) if not pos.empty else float("nan")
+            self.impute_fills_ = pd.Series(fills)
 
         completed = self._complete(df, is_train=True)
         if self.impute is not None:

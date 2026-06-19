@@ -178,6 +178,7 @@ def systematic_assessment(
     ratio: float = 5.0,
     n_permutations: int = 199,
     stability_bootstrap: int = 30,
+    max_perm_features: int = 800,
     seed: int = 0,
 ) -> dict:
     """Run the systematic supervised assessment for one (ds, spec).
@@ -296,11 +297,18 @@ def systematic_assessment(
                 train_score, n_design, m_all = cv_score, ctx_base["n_features"], None
             of = overfit_flag(train_score, cv_score)
 
-            # ---- permutation signal ----
-            def score_fn(yv, _fp=fit_predict):
-                cvp = leakage_free_cv(concat, yv, groups, _fp, task)
-                return cvp["r2"] if task == "regression" else cvp["balanced_accuracy"]
-            perm = permutation_significance(score_fn, groups, y, n_permutations=n_permutations, seed=seed)
+            # ---- permutation signal (skipped for very large designs -- refitting under
+            #      permutation is too costly; the reduced models carry the signal test) ----
+            if n_design <= max_perm_features:
+                def score_fn(yv, _fp=fit_predict):
+                    cvp = leakage_free_cv(concat, yv, groups, _fp, task)
+                    return cvp["r2"] if task == "regression" else cvp["balanced_accuracy"]
+                perm = permutation_significance(score_fn, groups, y, n_permutations=n_permutations, seed=seed)
+            else:
+                perm = {"skipped": True, "p_value": float("nan"), "significant": None,
+                        "note": (f"permutation skipped: {n_design} features (> max_perm_features="
+                                 f"{max_perm_features}); too costly to refit. CV + overfit flag are "
+                                 "reported, and the reduced models carry the permutation signal test.")}
 
             # ---- stability (selecting methods only) ----
             stability = None
