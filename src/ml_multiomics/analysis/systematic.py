@@ -135,7 +135,9 @@ def _model_factories(task: str, ordinal_order=None):
     """name -> (factory, native_missing, selects, can_reduce_downstream)."""
     reg = task == "regression"
     out = {}
-    out["RandomForest"] = (lambda: RandomForest(), False, False, True)
+    # 200 trees, not the 500 default: at n<=~30 the variance reduction past ~200 is
+    # negligible and 500 dominates the permutation cost (each refit is ~2.5x slower).
+    out["RandomForest"] = (lambda: RandomForest(n_estimators=200), False, False, True)
     out["XGBoost"] = (lambda: XGBoost(), True, False, False)   # native NaN; direct only
     if reg:
         out["Lasso"] = (lambda: Lasso(alpha=0.1), False, True, True)
@@ -274,20 +276,30 @@ def systematic_assessment(
                     p["for_nmf"] = (reducer == "nmf")
                 plan[ly] = p
 
-            def fit_predict(Xtr, ytr, Xte, _plan=plan, _factory=factory):
-                fp = FoldPipeline(_plan, seed=seed)
-                Dtr = fp.fit(Xtr)
-                Dte = fp.transform(Xte)
-                m = _factory()
-                m.fit(Dtr, ytr, target_type=spec.target_type)
-                return m.predict(Dte)
-
-            # ---- leakage-free CV (sanity) ----
+            # precompute y-INDEPENDENT per-fold designs ONCE (preprocess + any reduction
+            # do not use the labels), then reuse them for the real CV AND every permutation,
+            # so permutation only refits the model -- not the whole pipeline each time.
             try:
-                cv = leakage_free_cv(concat, y, groups, fit_predict, task)
+                fold_designs = []
+                for tr, te in leave_one_group_out(groups):
+                    fp = FoldPipeline(plan, seed=seed)
+                    Dtr = fp.fit(concat.iloc[tr]); Dte = fp.transform(concat.iloc[te])
+                    fold_designs.append((tr, te, Dtr, Dte))
             except Exception as e:
                 panel.append({"approach": label, "error": str(e)[:120]})
                 continue
+            n_design = int(fold_designs[0][2].shape[1])
+
+            def cv_metric(yv, _folds=fold_designs, _factory=factory):
+                preds = np.empty(len(yv), dtype=object)
+                for tr, te, Dtr, Dte in _folds:
+                    m = _factory(); m.fit(Dtr, yv[tr], target_type=spec.target_type)
+                    preds[te] = np.asarray(m.predict(Dte))
+                preds = preds.astype(float) if task == "regression" else np.array(list(preds))
+                return score_predictions(yv, preds, task)
+
+            # ---- leakage-free CV (sanity) ----
+            cv = cv_metric(y)
             cv_score = cv["r2"] if task == "regression" else cv["balanced_accuracy"]
 
             # ---- in-sample (for overfit flag) ----
@@ -296,17 +308,15 @@ def systematic_assessment(
                 m_all = factory(); m_all.fit(Dall, y, target_type=spec.target_type)
                 ins = score_predictions(y, m_all.predict(Dall), task)
                 train_score = ins["r2"] if task == "regression" else ins["balanced_accuracy"]
-                n_design = Dall.shape[1]
             except Exception:
-                train_score, n_design, m_all = cv_score, ctx_base["n_features"], None
+                train_score = cv_score
             of = overfit_flag(train_score, cv_score)
 
-            # ---- permutation signal (skipped for very large designs -- refitting under
-            #      permutation is too costly; the reduced models carry the signal test) ----
+            # ---- permutation signal (cached designs; skipped only for very large ones) ----
             if n_design <= max_perm_features:
-                def score_fn(yv, _fp=fit_predict):
-                    cvp = leakage_free_cv(concat, yv, groups, _fp, task)
-                    return cvp["r2"] if task == "regression" else cvp["balanced_accuracy"]
+                def score_fn(yv):
+                    m = cv_metric(yv)
+                    return m["r2"] if task == "regression" else m["balanced_accuracy"]
                 perm = permutation_significance(score_fn, groups, y, n_permutations=n_permutations, seed=seed)
             else:
                 perm = {"skipped": True, "p_value": float("nan"), "significant": None,
