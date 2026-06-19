@@ -1,20 +1,29 @@
-# Psilocybin "Part 3 — Omics & ML" report
+# Psilocybin multi-omics report (standard analysis -> integrative ML)
 
-A parameterized, **interpretation-framed** Quarto report that relates phase-3
-**proteomics** to a metabolite **yield** using `ml_multiomics`. It extends the
-IDEA Bio fermentation report (Parts 1–2) with the omics/ML analysis their
-template stubs out.
+A parameterized, **declared, self-documenting** Quarto report over the full
+multi-block psilocybin data (proteomics + intracellular metabolomics CCM/PSI +
+bioreactor) using `ml_multiomics`. It first **replicates the standard analysis**
+(QC -> preprocessing -> differential expression -> enrichment), then crosses a
+marked **ML divergence point** into two integrative assessments: continuous
+**yield** (regression) and **construct C1 vs C2** (nominal).
 
 Framing: at ~28 bioreactors this is **hypothesis-generation, not a predictor
-leaderboard**. Cross-validation (leave-one-bioreactor-out) is a *guardrail*
-(beats the predict-the-mean baseline? overfitting?), the descriptive model panel
-is not a ranking, and reducing the ~4,000-protein block to a few PCA/NMF factors
-is principled, interpretable preprocessing.
+leaderboard**. Each result is judged by **permutation signal** (vs the design's
+resolution floor) + **bootstrap stability** + **biological annotation**; CV is a
+binary overfitting sanity flag only. Proteomics (~4,375) dwarfs the metabolite
+blocks, so it is **auto-reduced** (WGCNA/PCA/NMF) before integration — and the
+report shows the naive-vs-reduced *stability* contrast that justifies it.
+`met_ext_pb` is **excluded as a predictor** (unreliable as features) and only
+sources the yield targets. The analysis is authored as an `AnalysisSpec` (the
+user's declared decisions) and executed by the library; every step is
+provenance-tracked.
 
 ## Files
-- `analysis.py` — the validated analysis engine (`run_yield_analysis(compound)`).
-  Runnable on its own: `python analysis.py`.
-- `psilocybin_omics_ml.qmd` — the report; its code cells call the engine.
+- `analysis.py` — the engine (`run_psilocybin_report(compound, ...)`); declares
+  the `AnalysisSpec`s and calls the library. Runnable on its own: `python analysis.py`
+  (a reduced-compute smoke). Compute knobs: `n_permutations`, `stability_bootstrap`,
+  `reducers`, `run_integration`, `run_construct`.
+- `psilocybin_omics_ml.qmd` — the report; its cells render the engine output.
 
 ## Render
 
@@ -45,7 +54,7 @@ targeted the same way once present in the yields table.
 
 The engine reads the psilocybin project data by default from
 `ml_psi_mofa/data/` (master_multiomics.csv + pseudobatched-external-yields-rates.csv).
-Override the paths via `run_yield_analysis(master_path=..., yields_path=...)`.
+Override the paths via `run_psilocybin_report(master_path=..., yields_path=...)`.
 In the consolidated architecture this report lives in the *project repo*
 (`ml_psi_mofa`), which depends on the `ml_multiomics` library.
 

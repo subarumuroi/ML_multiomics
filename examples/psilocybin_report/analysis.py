@@ -1,15 +1,27 @@
 """
-analysis.py
-===========
-Reusable engine for the psilocybin "Part 3: Omics -> ML" report. Predicts an
-external/internal metabolite yield from phase-3 proteomics using the
-ml_multiomics library, comparing several methods with leakage-free
-(per-bioreactor) cross-validation.
+analysis.py (psilocybin)
+========================
+Engine for the psilocybin "Omics & ML" report. This report DECLARES its analysis
+(an AnalysisSpec) and lets the ml_multiomics library execute it -- decisions live
+here, logic lives in the library.
 
-Targets: any compound in the yields file (default psilocybin_ext; tryptamine_ext
-and others available). The .qmd report calls run_yield_analysis() and narrates
-the result; this module holds the validated code so the report's cells are
-correct.
+Pipeline (see the .qmd):
+  1. STANDARD analysis replication (QC -> preprocessing provenance -> differential
+     expression -> ORA / GSEA-ranked list) -- the lab-convention pipeline, up to
+     the marked ML divergence point.
+  2. ML divergence: two assessments via systematic_assessment + integration_assessment
+       (a) continuous YIELD (regression; the headline) -- which omics/modules track
+           metabolite yield; DIABLO integrates the blocks (regression block.spls);
+       (b) CONSTRUCT C1 vs C2 (nominal) -- which omics separate the engineered
+           constructs (F batch is a crossed confound, flagged as a divergence).
+
+Data: ml_psi_mofa/data/master_multiomics.csv (RAW, multi-block) + the external
+yields file. Predictor blocks = proteomics + intracellular metabolomics (CCM, PSI)
++ bioreactor; `met_ext_pb` is EXCLUDED as a predictor (unreliable as features) and
+only sources the yield targets. Proteomics (~4375, ~76% missing) is auto-reduced.
+
+Compute is configurable (n_permutations / stability_bootstrap / reducers /
+run_integration). Defaults aim for soundness; lower them for a quick render.
 """
 
 from __future__ import annotations
@@ -20,138 +32,169 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# Make the library importable when run from the repo without install.
 _SRC = Path(__file__).resolve().parents[2] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from ml_multiomics import OmicsDataset, Preprocessor, Profile, RandomForest, Lasso, ElasticNet, NMF, PCA
-from ml_multiomics.core import parse_bioreactor_ids
-from ml_multiomics.validation import permutation_resolution
+from ml_multiomics import OmicsDataset, AnalysisSpec
+from ml_multiomics.analysis import (
+    systematic_assessment, integration_assessment,
+    qc_summary, differential_expression, over_representation, gsea_ranked_list,
+)
 
-# Default data locations (the psilocybin project repo). Override via run_yield_analysis args.
 DEFAULT_MASTER = Path("C:/Users/uqkmuroi/gitcode/ml_psi_mofa/data/master_multiomics.csv")
 DEFAULT_YIELDS = Path("C:/Users/uqkmuroi/gitcode/ml_psi_mofa/data/pseudobatched-external-yields-rates.csv")
 
-
-def load_proteomics_by_bioreactor(master_path: Path, phase: int = 3) -> pd.DataFrame:
-    """Phase-filtered proteomics, averaged per bioreactor (one independent row each)."""
-    df = pd.read_csv(master_path, low_memory=False)
-    df = df[(df["Phase"] == phase) & (df["has_proteomics"] == True)].copy()  # noqa: E712
-    df["bioreactor"] = df["condition"].astype(str) + "_" + df["R"].astype(str)
-    prot_cols = [c for c in df.columns if c.startswith("prot__")]
-    agg = df.groupby("bioreactor")[prot_cols].mean()
-    agg.columns = [c.replace("prot__", "") for c in agg.columns]
-    return agg
+# predictor blocks (met_ext_pb deliberately absent -- targets only, unreliable as features)
+_BLOCKS = {
+    "proteomics": ("prot__", "has_proteomics", "proteomics"),
+    "met_ccm": ("met_int_ccm__", "has_metabolomics_int_ccm", "metabolomics"),
+    "met_psi": ("met_int_psi__", "has_metabolomics_int_psi", "metabolomics"),
+    "bio": ("bio__", "has_bioreactor", "bioreactor"),
+}
 
 
-def load_yield(yields_path: Path, compound: str, phase: int = 3) -> pd.Series:
-    """Yield-over-biomass for one compound at a phase, indexed by bioreactor."""
+def load_psilocybin(master_path: Path = DEFAULT_MASTER, phase: int = 3) -> OmicsDataset:
+    """Multi-block dataset averaged per bioreactor (one independent unit each)."""
+    m = pd.read_csv(master_path, low_memory=False)
+    m = m[m["Phase"] == phase].copy()
+    m["bioreactor"] = m["condition"].astype(str) + "_" + m["R"].astype(str)
+    ds = OmicsDataset(name=f"psilocybin_phase{phase}")
+    for name, (pre, flag, otype) in _BLOCKS.items():
+        cols = [c for c in m.columns if c.startswith(pre)]
+        sub = m[m[flag] == True]                                          # noqa: E712
+        agg = sub.groupby("bioreactor")[cols].mean()
+        agg.columns = [c[len(pre):] for c in cols]
+        ds.add_block(name, agg, omics_type=otype)
+    meta = m.drop_duplicates("bioreactor").set_index("bioreactor")[["condition", "F", "C", "R"]]
+    meta["bioreactor"] = meta.index                                       # explicit grouping column
+    ds.set_sample_metadata(meta)
+    ds.align()                                                            # common bioreactors (all blocks)
+    return ds
+
+
+def load_yield(compound: str, yields_path: Path = DEFAULT_YIELDS, phase: int = 3) -> pd.Series:
     y = pd.read_csv(yields_path)
     y = y[(y["Compound"] == compound) & (y["Phase"] == phase)].copy()
     y["bioreactor"] = y["ferm_id"].str.replace(r"^27-PSI_", "", regex=True)
-    s = y.set_index("bioreactor")["yield_over_biomass"].dropna()
-    return s
+    return y.set_index("bioreactor")["yield_over_biomass"].dropna()
 
 
-def available_compounds(yields_path: Path = DEFAULT_YIELDS) -> list[str]:
+def available_compounds(yields_path: Path = DEFAULT_YIELDS) -> list:
     return sorted(pd.read_csv(yields_path)["Compound"].dropna().unique().tolist())
 
 
-def run_yield_analysis(
+def _yield_spec(ds: OmicsDataset, compound: str, yld: pd.Series) -> AnalysisSpec:
+    return AnalysisSpec(
+        name=f"yield:{compound}",
+        grouping_column="bioreactor",
+        grouping_parser="constructed from condition+R (one row per bioreactor)",
+        roles={"proteomics": "predictor", "met_ccm": "predictor",
+               "met_psi": "predictor", "bio": "predictor"},
+        target_type="continuous",
+        target_values=yld,
+        target_name=compound,
+        integration_groups=[["proteomics", "met_ccm", "met_psi", "bio"]],
+        min_obs_frac=0.5,
+    )
+
+
+def _construct_spec(ds: OmicsDataset) -> AnalysisSpec:
+    return AnalysisSpec(
+        name="construct:C1-vs-C2",
+        grouping_column="bioreactor",
+        grouping_parser="constructed from condition+R (one row per bioreactor)",
+        roles={"proteomics": "predictor", "met_ccm": "predictor",
+               "met_psi": "predictor", "bio": "predictor"},
+        target_type="nominal",
+        target_column="C",
+        target_name="construct",
+        integration_groups=[["proteomics", "met_ccm", "met_psi", "bio"]],
+        min_obs_frac=0.5,
+    )
+
+
+def run_psilocybin_report(
     compound: str = "psilocybin_ext",
-    phase: int = 3,
+    *,
     master_path: Path = DEFAULT_MASTER,
     yields_path: Path = DEFAULT_YIELDS,
+    n_permutations: int = 99,
+    stability_bootstrap: int = 20,
+    reducers=("pca", "nmf", "wgcna"),
+    run_integration: bool = True,
+    run_construct: bool = True,
     n_factors: int = 5,
-    seed: int = 42,
+    seed: int = 0,
 ) -> dict:
-    """Predict `compound` yield from phase-`phase` proteomics; compare methods.
+    """Full report engine: standard replication + yield + construct assessments."""
+    ds = load_psilocybin(master_path)
+    yld = load_yield(compound, yields_path)
+    # restrict to bioreactors that have a yield value, then re-align blocks
+    common = [b for b in ds.common_samples() if b in yld.index]
+    for nm in ds.block_names:
+        ds.blocks[nm].data = ds.blocks[nm].data.loc[common]
+    ds.sample_meta = ds.sample_meta.loc[common]
+    yld = yld.loc[common]
 
-    Methods (all leave-one-bioreactor-out CV, regression):
-      - Lasso (sparse linear, on z-scored data)
-      - RandomForest (direct, on z-scored data)
-      - WGCNA -> RandomForest (reduce then predict, z-scored)
-      - NMF  -> RandomForest (reduce then predict, log2-only non-negative)
-    Returns a dict with the comparison table, per-method top features, and
-    design metadata (n bioreactors, permutation resolution).
-    """
-    prot = load_proteomics_by_bioreactor(master_path, phase)
-    yld = load_yield(yields_path, compound, phase)
-    common = [b for b in prot.index if b in yld.index]
-    prot = prot.loc[common]
-    y = yld.loc[common].to_numpy(dtype=float)
-    groups = np.arange(len(common))  # one row per bioreactor -> independent
+    out = {"compound": compound, "n_bioreactors": len(common),
+           "block_sizes": {b: ds.blocks[b].shape[1] for b in ds.block_names}}
 
-    meta = parse_bioreactor_ids(common)
-
-    # z-scored dataset (Lasso / RF / WGCNA)
-    ds = OmicsDataset(name=f"psi_{compound}")
-    ds.add_block("proteomics", prot, omics_type="proteomics")
-    ds.set_sample_metadata(meta)
-    Preprocessor().run(ds)
-    Xz = ds.get("proteomics")
-
-    # log2-only (non-negative) dataset for NMF
-    ds_nn = OmicsDataset(name=f"psi_{compound}_nn")
-    ds_nn.add_block("proteomics", prot, omics_type="proteomics")
-    Preprocessor(profile=Profile(transform="log2", normalize="none")).run(ds_nn)
-    Xnn = ds_nn.get("proteomics")
-
-    rows, top_features = [], {}
-
-    def _reg(name, model, X):
-        cv = model.cross_validate(X, y, groups=groups, target_type="continuous")
-        rows.append({"method": name, "r2": cv["r2"], "rmse": cv["rmse"],
-                     "n_input_features": X.shape[1]})
-        return cv
-
-    # Direct (all proteins, z-scored): regularized linear + tree
-    las = Lasso(alpha=0.1).fit(Xz, y, target_type="continuous")
-    _reg("Lasso (all proteins)", las, Xz)
-    top_features["Lasso"] = las.coefficients(top_n=10)
-
-    en = ElasticNet(alpha=0.1, l1_ratio=0.5).fit(Xz, y, target_type="continuous")
-    _reg("ElasticNet (all proteins)", en, Xz)
-
-    rf = RandomForest(random_state=seed).fit(Xz, y, target_type="continuous")
-    _reg("RandomForest (all proteins)", rf, Xz)
-    top_features["RandomForest"] = rf.importances(top_n=10)
-
-    # Reduce the big proteomics block, then predict (validated reducers: PCA / NMF)
-    pca = PCA(n_components=n_factors, random_state=seed).fit(Xz)
-    _reg(f"PCA({n_factors})->RF", RandomForest(random_state=seed).fit(pca.reduce(), y, target_type="continuous"), pca.reduce())
-    top_features["PCA_PC1"] = pca.top_features(1, top_n=10)
-
-    nmf = NMF(n_components=n_factors, random_state=seed).fit(Xnn, y)
-    Xn = nmf.reduce()
-    _reg(f"NMF({n_factors})->RF", RandomForest(random_state=seed).fit(Xn, y, target_type="continuous"), Xn)
-    top_features["NMF_factor1"] = nmf.top_features(1, top_n=10)
-
-    # Null baseline: predicting the mean (R^2 = 0 by construction); report its RMSE
-    mean_rmse = float(np.sqrt(np.mean((y - y.mean()) ** 2)))
-
-    comparison = pd.DataFrame(rows).sort_values("r2", ascending=False).reset_index(drop=True)
-    return {
-        "compound": compound,
-        "phase": phase,
-        "n_bioreactors": len(common),
-        "n_proteins": prot.shape[1],
-        "yield_mean": float(np.mean(y)),
-        "yield_std": float(np.std(y)),
-        "comparison": comparison,
-        "top_features": top_features,
-        "baseline_mean_rmse": mean_rmse,    # predict-the-mean: R^2=0, rmse=this
-        "resolution": permutation_resolution(groups, meta["condition"].to_numpy()),
-        "conditions": meta["condition"].value_counts().to_dict(),
+    # ---- 1. STANDARD analysis replication (descriptive; before ML divergence) ----
+    prot_raw = ds.get("proteomics")
+    construct = ds.sample_meta["C"].to_numpy()
+    de = differential_expression(prot_raw, unit_labels=common, condition_labels=construct, logx=True)
+    out["standard"] = {
+        "qc": qc_summary(ds)["per_block"],
+        "de_volcano": de["volcano"],
+        "de_n_units": de["n_units"],
+        "de_provenance": de["provenance"].to_markdown(),
+        "gsea_ranked": (gsea_ranked_list(de["volcano"], de["volcano"]["contrast"].iloc[0]).head(50)
+                        if len(de["volcano"]) else pd.Series(dtype=float)),
     }
+
+    # ---- 2. ML divergence: yield (regression) ----
+    spec_y = _yield_spec(ds, compound, yld)
+    out["yield"] = {
+        "systematic": systematic_assessment(
+            ds, spec_y, n_factors=n_factors, reducers=tuple(r for r in reducers if r != "wgcna"),
+            n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=seed),
+        "spec": spec_y.describe(),
+    }
+    if run_integration:
+        out["yield"]["integration"] = integration_assessment(
+            ds, spec_y, reducers=reducers, n_factors=n_factors,
+            stability_bootstrap=stability_bootstrap, seed=seed)
+
+    # ---- 2b. ML divergence: construct C1 vs C2 (nominal) ----
+    if run_construct:
+        spec_c = _construct_spec(ds)
+        out["construct"] = {
+            "systematic": systematic_assessment(
+                ds, spec_c, n_factors=n_factors, reducers=tuple(r for r in reducers if r != "wgcna"),
+                n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=seed),
+            "spec": spec_c.describe(),
+        }
+        if run_integration:
+            out["construct"]["integration"] = integration_assessment(
+                ds, spec_c, reducers=reducers, n_factors=n_factors,
+                stability_bootstrap=stability_bootstrap, seed=seed)
+    return out
 
 
 if __name__ == "__main__":
-    for cpd in ("psilocybin_ext", "tryptamine_ext"):
-        print("\n" + "=" * 64)
-        print(f"TARGET: {cpd}")
-        res = run_yield_analysis(cpd)
-        print(f"  {res['n_bioreactors']} bioreactors, {res['n_proteins']} proteins; "
-              f"yield mean={res['yield_mean']:.3g} sd={res['yield_std']:.3g}")
-        print(res["comparison"].to_string(index=False))
+    # quick smoke (reduced compute): confirm the wiring runs on the real data
+    r = run_psilocybin_report(n_permutations=19, stability_bootstrap=5,
+                              reducers=("pca", "wgcna"), run_construct=False)
+    print(f"bioreactors={r['n_bioreactors']} blocks={r['block_sizes']}")
+    print("standard DE volcano rows:", len(r["standard"]["de_volcano"]))
+    yp = r["yield"]["systematic"]["panel"]
+    print("yield panel rows:", len(yp))
+    for row in yp[:6]:
+        if "error" in row:
+            print("  ERR", row["approach"], row["error"][:60]); continue
+        print("  %-30s cv=%.3f perm_p=%.3g overfit=%s" % (
+            row["approach"], row["cv_score"], row["permutation"]["p_value"], row["overfit"]["overfit"]))
+    if "integration" in r["yield"]:
+        g = r["yield"]["integration"]["groups"][0]
+        print("integration verdict:", g["discriminator"].get("verdict", g["discriminator"].get("note")))
