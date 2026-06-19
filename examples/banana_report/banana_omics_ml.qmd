@@ -30,8 +30,10 @@ overfit flag only.
 #| echo: false
 #| output: false
 #| tags: [parameters]
-n_permutations = 99
-stability_bootstrap = 20
+# Fast, repeatable defaults (p-resolution ~0.02). Raise to 199-999 for a
+# publication-grade permutation p-value; the result is deterministic at a fixed seed.
+n_permutations = 49
+stability_bootstrap = 10
 ```
 
 ```{python}
