@@ -54,12 +54,16 @@ def differential_expression(
     condition_labels,
     logx: bool = True,
     fdr_method: str = "BH",
+    anova: bool = False,
 ) -> dict:
     """Standard DE across conditions, aggregated to independent units first.
 
     X_raw : samples x features RAW / linear abundances (DE computes its own FC + log).
     unit_labels : independent unit per sample (rows are averaged within unit).
     condition_labels : the DE grouping per sample (e.g. stage / condition).
+    anova : also run ANOVA + per-feature Tukey HSD (off by default -- Tukey HSD per
+        feature over thousands of proteins is very slow and the reports show only the
+        volcano; turn on only when the ANOVA/Tukey table is actually needed).
     """
     Xu = aggregate_to_units(X_raw, unit_labels)
     cond = pd.Series(np.asarray(condition_labels), index=X_raw.index)
@@ -69,10 +73,12 @@ def differential_expression(
     prov.record("aggregate_to_units", {"agg": "mean"}, in_obj=X_raw, out_obj=Xu, note="one row per independent unit (no pseudoreplication)")
     volcano = compute_volcano(Xu, cond_u.to_numpy(), logx=logx, fdr_method=fdr_method)
     prov.record("compute_volcano", {"logx": logx, "fdr": fdr_method}, in_obj=Xu, note="Welch t on log + BH (IdeaBio.R parity)")
-    anova = anova_tukey(Xu, cond_u.to_numpy(), logx=logx, fdr_method=fdr_method)
-    prov.record("anova_tukey", {"logx": logx, "fdr": fdr_method}, in_obj=Xu)
-    return {"volcano": volcano, "anova": anova, "n_units": int(len(Xu)),
-            "conditions": cond_u.value_counts().to_dict(), "provenance": prov}
+    out = {"volcano": volcano, "anova": None, "n_units": int(len(Xu)),
+           "conditions": cond_u.value_counts().to_dict(), "provenance": prov}
+    if anova:
+        out["anova"] = anova_tukey(Xu, cond_u.to_numpy(), logx=logx, fdr_method=fdr_method)
+        prov.record("anova_tukey", {"logx": logx, "fdr": fdr_method}, in_obj=Xu)
+    return out
 
 
 def over_representation(volcano: pd.DataFrame, universe, gene_sets: dict,
