@@ -195,6 +195,30 @@ def test_systematic_assessment_ordinal():
         assert "error" not in r, f"{r.get('approach')}: {r.get('error')}"
 
 
+def test_systematic_assessment_repeatable():
+    # same seed -> identical results (scientific reproducibility)
+    rng = np.random.RandomState(11)
+    n = 12
+    idx = [f"s{i}" for i in range(n)]
+    grp = [f"u{i//2}" for i in range(n)]
+    prot = pd.DataFrame(rng.rand(n, 30) + 1, index=idx, columns=[f"P{i}" for i in range(30)])
+    y = 3 * prot["P0"] + rng.rand(n) * 0.3
+    ds = OmicsDataset("rep")
+    ds.add_block("prot", prot, omics_type="proteomics")
+    ds.set_sample_metadata(pd.DataFrame({"unit": grp, "y": y.values}, index=idx))
+    spec = AnalysisSpec(grouping_column="unit", roles={"prot": "predictor"},
+                        target_type="continuous", target_column="y")
+    kw = dict(reducers=(), n_permutations=19, stability_bootstrap=8, seed=0)
+    a = systematic_assessment(ds, spec, **kw)
+    b = systematic_assessment(ds, spec, **kw)
+    pa = {r["approach"]: (r.get("cv_score"), r["permutation"].get("p_value"), r.get("n_stable"))
+          for r in a["panel"] if "error" not in r}
+    pb = {r["approach"]: (r.get("cv_score"), r["permutation"].get("p_value"), r.get("n_stable"))
+          for r in b["panel"] if "error" not in r}
+    assert pa == pb, "same seed must give identical scores / p-values / stability"
+    assert list(a["consensus"]["feature"]) == list(b["consensus"]["feature"])
+
+
 def test_standard_de_aggregates_to_units():
     rng = np.random.RandomState(5)
     units = [f"{s}{i}" for s in ["G", "R"] for i in range(3)]
