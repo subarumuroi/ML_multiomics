@@ -42,13 +42,15 @@ class DIABLO(BaseMethod):
     supported_targets = ("nominal", "ordinal", "continuous")
 
     def __init__(self, n_components: int = 2, keepX=None, design: float = 0.1,
-                 keepY=None, impute: str = "metaboanalyst", rscript: str = "Rscript"):
+                 keepY=None, impute: str = "metaboanalyst", rscript: str = "Rscript",
+                 timeout: int = 600):
         super().__init__(impute=impute)
         self.n_components = n_components
         self.keepX = keepX          # dict {block: int|list} or None (full)
         self.design = design
         self.keepY = keepY          # int features kept from a continuous Y (block.spls)
         self.rscript = rscript
+        self.timeout = timeout      # bound R hangs
         self.target_type_ = None    # set at fit/cross_validate; drives splsda vs spls
         self.block_names_ = None
         self.variates_ = None       # {block: ndarray (n x ncomp)}
@@ -135,8 +137,11 @@ class DIABLO(BaseMethod):
                       "keepY": None if self.keepY is None else int(self.keepY)}
             (work / "config.json").write_text(json.dumps(config))
 
-            res = subprocess.run([self.rscript, str(_RSCRIPT), str(work)],
-                                 capture_output=True, text=True)
+            try:
+                res = subprocess.run([self.rscript, str(_RSCRIPT), str(work)],
+                                     capture_output=True, text=True, timeout=self.timeout)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError(f"mixOmics DIABLO (R) timed out after {self.timeout}s")
             if res.returncode != 0:
                 raise RuntimeError(f"mixOmics DIABLO (R) failed:\n{res.stderr}")
 

@@ -41,13 +41,15 @@ class WGCNA(BaseMethod):
 
     def __init__(self, power=None, network_type: str = "unsigned",
                  min_module_size: int = 20, merge_cut_height: float = 0.25,
-                 impute: str = "metaboanalyst", rscript: str = "Rscript"):
+                 impute: str = "metaboanalyst", rscript: str = "Rscript",
+                 timeout: int = 600):
         super().__init__(impute=impute)
         self.power = power
         self.network_type = network_type
         self.min_module_size = min_module_size
         self.merge_cut_height = merge_cut_height
         self.rscript = rscript
+        self.timeout = timeout      # bound R hangs (e.g. WGCNA at very small n)
         self.modules_ = None        # DataFrame feature/module
         self.eigengenes_ = None     # DataFrame samples x modules
         self.index_ = None
@@ -106,8 +108,13 @@ class WGCNA(BaseMethod):
                    "merge_cut_height": float(self.merge_cut_height),
                    "power": None if self.power is None else int(self.power)}
             (work / "config.json").write_text(json.dumps(cfg))
-            res = subprocess.run([self.rscript, str(_RSCRIPT), str(work)],
-                                 capture_output=True, text=True)
+            try:
+                res = subprocess.run([self.rscript, str(_RSCRIPT), str(work)],
+                                     capture_output=True, text=True, timeout=self.timeout)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError(
+                    f"R WGCNA timed out after {self.timeout}s (often n too small for WGCNA, "
+                    "which expects >= ~15-20 samples)")
             if res.returncode != 0:
                 raise RuntimeError(f"R WGCNA failed:\n{res.stdout}\n{res.stderr}")
             self.modules_ = pd.read_csv(work / "modules.csv")

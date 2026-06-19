@@ -35,6 +35,49 @@ values) are the two that matter most for getting trustworthy results.**
 
 ---
 
+## The systematic engine (recommended path)
+
+Instead of wiring methods one at a time, **declare** the analysis as an
+`AnalysisSpec` and let the engine run the whole applicable method matrix,
+leakage-free, and tell you what's trustworthy. This is what the example reports do.
+
+```python
+from ml_multiomics import OmicsDataset, AnalysisSpec
+from ml_multiomics.analysis import systematic_assessment, integration_assessment
+
+# ds: an OmicsDataset with a grouping column in ds.sample_meta (you populate it;
+# the engine never parses sample IDs -- use parse_bioreactor_ids/parse_delimited).
+spec = AnalysisSpec(
+    grouping_column="bioreactor",                  # the independent unit (required)
+    roles={"proteomics": "predictor", "metab": "predictor", "ext": "exclude"},
+    target_type="continuous",                       # nominal | ordinal | continuous
+    target_column="yield",                          # or target_values=<Series>
+    integration_groups=[["proteomics", "metab"]],   # opt-in DIABLO integration
+    min_obs_frac=0.5,
+    # revert/adapt an upstream step if a file was already processed:
+    # input_states={"proteomics": {"imputed": True}}  or  raw_sources={"proteomics": raw_df}
+).validate(ds)
+
+sysres = systematic_assessment(ds, spec, n_permutations=99, stability_bootstrap=20)
+integ  = integration_assessment(ds, spec, stability_bootstrap=20)
+```
+
+What you get back (read it, don't rank it):
+- **panel** — every applicable method on the representation it's valid on, each with a
+  permutation **signal** test (vs the design's resolution floor), bootstrap **stability**,
+  and a binary **overfit** flag (CV is a sanity check, never a leaderboard).
+- **discriminators** — for reduce-vs-direct etc., a verdict by signal + stability +
+  parsimony (or "indistinguishable -> prefer the simpler").
+- **consensus** — features stable across multiple approaches (the robust hypothesis).
+- **integration** — naive vs reduced DIABLO with the selection-**stability** contrast that
+  justifies reducing an oversized block; each method carries a `report_card`
+  (describe / assumptions / divergences-on-this-data) and a provenance trail.
+
+Everything below is the lower-level, one-method-at-a-time path (still fully supported,
+and what the engine uses under the hood).
+
+---
+
 ## Step A — Get your data in
 
 Each omics layer is a table: **rows = samples, columns = features**, with a

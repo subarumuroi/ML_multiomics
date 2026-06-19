@@ -154,6 +154,48 @@ The method set is deliberately regularized / tree-based / factor-analytic:
 PCA, NMF, MOFA, WGCNA (unsupervised); sparse PLS-DA, DIABLO, Random Forest,
 ordinal regression, LASSO/ElasticNet (supervised).
 
+### Leakage-free validation; permutation + stability are primary, CV is a sanity flag
+
+All data-dependent preprocessing (detection filter, imputation, variance filter,
+z-score) and any dimensionality reduction are fit **inside each CV / permutation /
+bootstrap fold, on training rows only** (`FittablePreprocessor`,
+`validation.leakage_free_cv`). The earlier global-z-score / pre-split-imputation
+leakage is gone. Because a single leave-one-group-out score is noise at n=9–28, the
+**primary inferences are the permutation test** (signal beyond chance, always read
+against the design's resolution floor) **and bootstrap selection stability** (does the
+signal recur). Cross-validation is reported only as a **binary overfit flag** — never
+ranked, never a leaderboard. Permutation is skipped (with an explicit recorded note)
+for very large naive designs where refitting is prohibitive; the reduced models carry
+the signal test.
+
+---
+
+## 4b. Declarative analysis, block imbalance & self-documentation
+
+- **The user declares; the package executes.** An `AnalysisSpec` records the decisions a
+  human must own — the (required, explicit) grouping/independent-unit column, each layer's
+  role (predictor/target/covariate/exclude), per-layer transforms, and which layers (if any)
+  integrate. The engine validates, flags, records, and runs; it never parses sample IDs,
+  proposes roles, or auto-combines layers. `parse_bioreactor_ids` / `parse_delimited` are
+  optional helpers that *populate* the grouping column.
+- **Block-imbalance reduction.** When one block dwarfs the others (proteomics ~4000 vs
+  metabolites ~8–46), naive integration is dominated by it and yields an unstable
+  "top-proteins" list. The engine auto-reduces such a block (WGCNA modules / PCA / NMF;
+  hybrid trigger `>200 features AND >5× the median other block`) before integrating, and
+  **shows the naive-vs-reduced selection-stability contrast** that justifies it. DIABLO gained
+  a regression mode (`mixOmics::block.spls`) so a continuous yield can be integrated directly.
+- **No alternative without a discriminator.** Reduced-vs-direct / imputation / reducer / filter
+  comparisons are each resolved by stability + signal + parsimony, or declared indistinguishable
+  (then prefer the simpler) — never by a raw score.
+- **Upstream-state handling.** If a file arrived already transformed/normalized/imputed, the
+  user declares it (`input_states`); the preprocessor skips steps already applied and flags ones
+  it cannot safely redo from processed data. The legitimate "revert" is to point the spec at a
+  `raw_source` (e.g. banana's unimputed proteomics) — transforms are never algorithmically inverted.
+- **Self-documentation is a package feature, not report text.** Every method implements
+  `describe()` / `assumptions()` / `divergences(context)` (computed against the live data) and a
+  `report_card`; every data mutation is recorded in a `ProvenanceTrail` (markdown + JSON). A
+  parametrized test fails if any method ships without these, so completeness is enforced by CI.
+
 ---
 
 ## 5. Numerical verification
