@@ -94,7 +94,9 @@ class XGBoost(BaseMethod):
         import xgboost as xgb
         if task == "regression":
             return xgb.XGBRegressor(objective="reg:squarederror", **self.params)
-        return xgb.XGBClassifier(objective="multi:softprob", eval_metric="mlogloss", **self.params)
+        # let XGBoost pick the objective by class count (binary:logistic vs multi:softprob);
+        # forcing multi:softprob leaves num_class=0 for a 2-class problem and errors.
+        return xgb.XGBClassifier(eval_metric="logloss", **self.params)
 
     def fit(self, X, y, feature_names=None, target_type=None) -> "XGBoost":
         if y is None:

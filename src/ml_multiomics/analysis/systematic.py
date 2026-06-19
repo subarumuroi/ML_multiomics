@@ -299,7 +299,11 @@ def systematic_assessment(
                 return score_predictions(yv, preds, task)
 
             # ---- leakage-free CV (sanity) ----
-            cv = cv_metric(y)
+            try:
+                cv = cv_metric(y)
+            except Exception as e:                       # a failing candidate is recorded, not fatal
+                panel.append({"approach": label, "error": str(e)[:160]})
+                continue
             cv_score = cv["r2"] if task == "regression" else cv["balanced_accuracy"]
 
             # ---- in-sample (for overfit flag) ----
