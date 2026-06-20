@@ -15,23 +15,23 @@ execute:
 ---
 
 Banana ripening is the package's **arbitrary external data** demonstrator: nothing about it is
-hardcoded in the library -- the report DECLARES an `AnalysisSpec` and the library executes it.
-Four omics blocks (proteomics, metabolomics, amino-acids, aromatics) over 9 fruit, 3 ripening
-stages x 3 replicates; each fruit is its own independent unit (leave-one-out), and the target is
-the **ORDERED** stage (Green < Ripe < Over).
+hardcoded in the library. The report is structured so a non-specialist can follow every step:
+the declared **setup**, the conventional **standard analysis** (QC -> preprocessing -> DE ->
+enrichment), a marked **ML divergence point**, the **ML assessment** (judged by signal +
+stability, not a single score), the plain-language **interpretation**, and a **provenance
+appendix**. Four omics blocks over 9 fruit (3 ripening stages x 3 replicates); each fruit is its
+own independent unit; the target is the ORDERED stage (Green < Ripe < Over).
 
 It also demonstrates **reverting an upstream step before ML**: the lab shipped a pre-imputed
-proteomics file (used by the standard-analysis section), but for ML we revert to the raw
-un-imputed proteomics (via the spec's `raw_sources`) so per-fold imputation is leakage-free from
-raw. As everywhere: signal = permutation vs the resolution floor, trust = stability, CV = a binary
-overfit flag only.
+proteomics file (used by the standard section), but for ML we revert to the raw un-imputed
+proteomics so per-fold imputation is leakage-free from raw.
 
 ```{python}
 #| echo: false
 #| output: false
 #| tags: [parameters]
-# Fast, repeatable defaults (p-resolution ~0.02). Raise to 199-999 for a
-# publication-grade permutation p-value; the result is deterministic at a fixed seed.
+# Fast, repeatable defaults (permutation p-resolution ~0.02). Raise to 199-999 for a
+# publication-grade p-value; results are deterministic at a fixed seed.
 n_permutations = 49
 stability_bootstrap = 10
 ```
@@ -52,6 +52,7 @@ from IPython.display import Markdown, display
 res = analysis.run_banana_report(
     n_permutations=n_permutations, stability_bootstrap=stability_bootstrap,
     reducers=("pca", "nmf"), run_integration=True)   # WGCNA omitted at n=9 (needs >= ~15-20)
+setup = res["stage"]["systematic"]["setup"]
 
 def panel_table(systematic):
     rows = []
@@ -62,7 +63,7 @@ def panel_table(systematic):
         rows.append({
             "approach": r["approach"], "n_inputs": r["n_inputs"],
             **{k: round(cv[k], 3) for k in ("balanced_accuracy", "accuracy", "r2", "rmse", "mae") if k in cv},
-            "perm_p": round(perm["p_value"], 3) if perm.get("p_value") == perm.get("p_value") else None,
+            "perm_p": (round(perm["p_value"], 3) if perm.get("p_value") == perm.get("p_value") else None),
             "signal?": perm.get("significant"), "overfit?": r["overfit"]["overfit"], "n_stable": r["n_stable"],
         })
     return pd.DataFrame(rows)
@@ -92,33 +93,90 @@ def integration_md(integ):
         lines.append(f"| {nm} | {v['n_selected']} | {fs} |")
     lines.append(f"\n**Verdict:** {g['discriminator'].get('verdict', g['discriminator'].get('note'))}")
     return "\n".join(lines)
+
+def conclusion_md(systematic, integ):
+    sig = [r for r in systematic["panel"] if "error" not in r and r["permutation"].get("significant")]
+    floor = setup["resolution"]["finest_two_sided_p"]
+    cons = systematic["consensus"]
+    lines = []
+    if sig:
+        lines.append(f"- **Signal:** {len(sig)} approach(es) beat the label-shuffled null (p<0.05); "
+                     f"the finest p this 9-sample design can produce is ~{floor:.2g}.")
+    else:
+        lines.append(f"- **Signal:** no approach cleared p<0.05 (design's finest possible p ~{floor:.2g}); "
+                     "treat associations as exploratory at n=9.")
+    if len(cons):
+        top = ", ".join(f"`{f}`" for f in cons['feature'].head(6))
+        lines.append(f"- **Robust hypothesis:** features recurring across the most approaches: {top}.")
+    else:
+        lines.append("- **Robust hypothesis:** nothing stable across multiple approaches at this n.")
+    if integ and integ.get("groups"):
+        lines.append(f"- **Recommended representation:** {integ['groups'][0]['discriminator'].get('verdict','')}")
+    lines.append(f"- **Reminder:** {setup['n_groups']} independent fruit; CV is a gross-overfitting "
+                 "check only, not a ranking.")
+    return "\n".join(lines)
 ```
 
-# Overview
+# 1. How this analysis was set up
+
+The decisions a human made (declared up front). The library executed exactly this; it never
+guesses the unit, picks roles, or combines layers on its own.
+
+```{python}
+#| echo: false
+Markdown("```\n" + res["stage"]["spec"] + "\n```")
+```
 
 ```{python}
 #| echo: false
 Markdown(
-    f"- **Independent units:** {res['n_samples']} fruit (leave-one-out)\n"
-    f"- **Target:** ripening stage, ORDINAL (Green < Ripe < Over); counts {res['stage_counts']}\n"
-    f"- **Predictor blocks:** " + ", ".join(f"{b} ({n})" for b, n in res['block_sizes'].items()) + "\n"
-    f"- proteomics dwarfs the others, so it is **auto-reduced** before integration\n"
+    f"- **Independent unit:** each fruit ({setup['n_groups']} units), leave-one-out validated.\n"
+    f"- **Target:** ripening stage, ORDINAL (Green < Ripe < Over); counts {res['stage_counts']}.\n"
+    f"- **Predictor blocks:** " + ", ".join(f"{b} ({n})" for b, n in res['block_sizes'].items()) + ".\n"
+    f"- **Oversized (auto-reduced before integration):** {setup['oversized_blocks']}.\n"
     f"- **Upstream revert:** ML uses the RAW un-imputed proteomics (the standard section uses the "
-    f"lab's pre-imputed file) -- declared via the spec's raw_sources"
+    "lab's pre-imputed file) -- declared via the spec's raw_sources, so per-fold imputation is clean.\n"
+    f"- **Baseline to beat:** {setup['baseline_kind']} = {setup['baseline']:.3g}.\n"
+    f"- **Resolution floor:** finest permutation p ~{setup['resolution']['finest_two_sided_p']:.2g}."
 )
 ```
 
-# Part 1 -- Standard analysis
+# 2. Standard analysis (the lab-convention pipeline)
+
+## 2.1 Quality control
 
 ```{python}
 #| echo: false
 res["standard"]["qc"]
 ```
 
+## 2.2 Preprocessing -- the exact steps and intermediate sizes
+
 ```{python}
 #| echo: false
-Markdown(f"**Differential expression** across stages, on {res['standard']['de_n_units']} "
-         "independent fruit (Welch t on log + BH). Top features by q-value:")
+pp = res["preprocess"]
+Markdown(
+    "Applied to proteomics. **Run once globally for the standard analysis; refit INSIDE every CV "
+    "fold (train rows only) for the ML below** -- leakage-free. Steps: detection filter "
+    f"`min_obs_frac={pp['min_obs_frac']}`, variance filter, impute (`{pp['impute']}`), per-feature "
+    f"z-score. Proteomics features: **{pp['n_in']} -> {pp['n_kept']}** kept. The trail:"
+)
+```
+
+```{python}
+#| echo: false
+Markdown(pp["provenance"])
+```
+
+## 2.3 Differential expression
+
+```{python}
+#| echo: false
+Markdown(
+    f"Pairwise DE across stages, aggregated to {res['standard']['de_n_units']} independent fruit "
+    "(Welch t on log abundances + BH FDR; verified to ~1e-15 against the reference R). Columns: "
+    "`log2fc`, raw `pvalue`, FDR `qvalue`. Top features by q-value:"
+)
 ```
 
 ```{python}
@@ -127,9 +185,12 @@ v = res["standard"]["de_volcano"]
 v.reindex(v["qvalue"].sort_values().index).head(12)[["contrast", "feature", "log2fc", "pvalue", "qvalue"]]
 ```
 
+## 2.4 Enrichment input
+
 ```{python}
 #| echo: false
-Markdown("**GSEA-ready ranked list** (top of signed -log10 p; for the external R GSEA path):")
+Markdown("Ranked feature list (signed -log10 p) for the external R GSEA path (GSEA not "
+         "reimplemented in pure Python).")
 ```
 
 ```{python}
@@ -139,13 +200,25 @@ res["standard"]["gsea_ranked"].head(10).round(3).to_frame("rank_stat")
 
 # === ML divergence point ===
 
-Beyond here: revert proteomics to raw, per-fold preprocessing (train-only), auto-reduction, and
-integration. CV is a binary overfitting sanity flag only.
+Below: preprocessing (and reduction) **refit inside each fold** on train rows only; proteomics
+**reverted to raw** then reduced; **CV is a binary overfitting flag only** -- signal comes from
+permutation, trust from stability.
 
-# Part 2 -- Ripening-stage assessment (ordinal)
+# 3. Ripening-stage assessment (ordinal)
 
 Every applicable method on the representation it is valid on; the Ordinal model respects the
-stage order, others treat it as nominal (a declared divergence).
+stage order, the others treat it as nominal (a declared divergence).
+
+```{python}
+#| echo: false
+Markdown(
+    "**How to read the panel.** `n_inputs` = features seen (after filter/reduction). "
+    "`balanced_accuracy/accuracy` = leave-one-out CV (a SANITY check, not a ranking). `perm_p` = "
+    "permutation p-value; `signal?` = significant at this design. `overfit?` = large train-vs-CV gap. "
+    "`n_stable` = selected features that recur under resampling. `perm_p` blank = permutation skipped "
+    "for a very large naive design (the reduced models carry the signal test)."
+)
+```
 
 ```{python}
 #| echo: false
@@ -154,14 +227,14 @@ panel_table(res["stage"]["systematic"])
 
 ```{python}
 #| echo: false
-Markdown("**Reduce-vs-direct verdicts** (signal + stability + parsimony):")
+Markdown("**Which representation to trust** (signal + stability + parsimony, never raw score):")
 for d in res["stage"]["systematic"]["discriminators"]:
     display(Markdown(f"- {d['verdict']}"))
 ```
 
 ```{python}
 #| echo: false
-Markdown("**Cross-method consensus** (features stable across multiple approaches):")
+Markdown("**Cross-method consensus** -- features stable across multiple approaches (the robust hypothesis):")
 ```
 
 ```{python}
@@ -169,31 +242,52 @@ Markdown("**Cross-method consensus** (features stable across multiple approaches
 res["stage"]["systematic"]["consensus"].head(12)
 ```
 
-## DIABLO integration (naive vs reduced)
+## 3.1 DIABLO integration: naive vs reduced
+
+```{python}
+#| echo: false
+Markdown("Compare the **selection stability**: a list of individual features that doesn't recur "
+         "under resampling is not trustworthy; stable modules/factors are (and expand to member "
+         "features for biology).")
+```
 
 ```{python}
 #| echo: false
 Markdown(integration_md(res["stage"]["integration"]))
 ```
 
-## What each model assumes (and where it diverges, on THIS data)
+## 3.2 What each model assumes (and where it diverges, on THIS data)
 
 ```{python}
 #| echo: false
 Markdown(cards_md(res["stage"]["systematic"]))
 ```
 
-# Part 3 -- How to read this
+# 4. Interpretation -- what this means
+
+```{python}
+#| echo: false
+Markdown(conclusion_md(res["stage"]["systematic"], res["stage"].get("integration")))
+```
 
 ```{python}
 #| echo: false
 Markdown(
-    "- At n=9 a single CV score is noise; **signal** is the permutation p against the design's "
-    "resolution floor, **trust** is stability, and the deliverable is the stable features/modules.\n"
-    "- The naive integration's individual-feature list is typically unstable; prefer the reduced, "
-    "interpretable modules/factors (expandable to member features for enrichment).\n"
-    "- The whole analysis was declared in an AnalysisSpec (layer roles, ordinal target, grouping, "
-    "the proteomics raw-revert) and is provenance-tracked -- follow and revise exactly what was done.\n"
-    "- This is arbitrary external data: the library has no banana-specific code."
+    "**How to use this:** at n=9 the goal is trustworthy hypotheses, not prediction. Follow up the "
+    "robust features/modules biologically. This is arbitrary external data -- the library has no "
+    "banana-specific code; the same `AnalysisSpec` -> engine flow works for any multi-omics study."
 )
+```
+
+# Appendix -- provenance (reproduce without AI)
+
+```{python}
+#| echo: false
+Markdown("Standard-analysis steps with parameters and shapes; with the declared spec (Section 1) "
+         "and the fixed seed, this reproduces the numbers exactly. ML preprocessing trail is in 2.2.")
+```
+
+```{python}
+#| echo: false
+Markdown(res["standard"]["de_provenance"])
 ```

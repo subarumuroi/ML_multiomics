@@ -115,3 +115,22 @@ Run on RAW abundances; GSEA uses the external R path via `gsea_ranked_list`.
   or revert to raw (`raw_sources`) — do not double-process.
 - Everything is provenance-tracked; if the user is unsure, show them the trail and
   let them revise the spec.
+
+## Robustness & reproducibility (what the engine handles for you)
+- **Deterministic.** Same `seed` -> identical panel, p-values, stability, consensus.
+  Always pass a fixed `seed` so a report re-renders to the same numbers; raise
+  `n_permutations` (49 -> 199-999) only to refine the p-value resolution.
+- **Graceful degradation.** A method/reducer that fails on a given dataset (e.g. a
+  degenerate fold, or a target a method can't take) is recorded as an `error` row and
+  the rest of the assessment proceeds -- one failure never aborts the report. Check for
+  `error` keys and tell the user which approaches were skipped and why.
+- **Leakage-free by construction.** All preprocessing AND any reduction are refit
+  inside each CV/permutation/bootstrap fold on training rows only; you don't manage this.
+- **R methods are bounded.** DIABLO/WGCNA shell out to R with a timeout (default 600s)
+  so a hang can't block forever. **WGCNA needs n >= ~15-20** -- omit it as a reducer for
+  tiny datasets (e.g. banana n=9); the engine will otherwise record its failure.
+- **Cost knobs.** Permutation is skipped (with a recorded note) for very large naive
+  designs (`max_perm_features`); reduce `n_permutations`/`stability_bootstrap`/`reducers`
+  for a quick exploratory run, raise them for a final one. Results stay deterministic.
+- **Validate against a reference when one exists.** e.g. cross-check reducer factors
+  against an established MOFA model (see tests/crosscheck/crosscheck_mofa_factors.py).

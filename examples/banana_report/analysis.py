@@ -33,6 +33,7 @@ if str(_SRC) not in sys.path:
 
 from ml_multiomics import OmicsDataset, AnalysisSpec
 from ml_multiomics.core import parse_delimited
+from ml_multiomics.preprocessing import FittablePreprocessor
 from ml_multiomics.analysis import (
     systematic_assessment, integration_assessment,
     qc_summary, differential_expression, gsea_ranked_list,
@@ -129,6 +130,16 @@ def run_banana_report(
         "de_provenance": de["provenance"].to_markdown(),
         "gsea_ranked": (gsea_ranked_list(de["volcano"], de["volcano"]["contrast"].iloc[0]).head(40)
                         if len(de["volcano"]) else pd.Series(dtype=float)),
+    }
+
+    # ---- preprocessing demonstration: steps + intermediate shapes the ML refits inside
+    #      every fold (shown once on the RAW un-imputed proteomics the ML reverts to) ----
+    _pp = FittablePreprocessor(omics_type="proteomics", impute="metaboanalyst", min_obs_frac=0.5)
+    _pp.fit(raw_prot)
+    out["preprocess"] = {
+        "provenance": _pp.provenance.to_markdown(),
+        "n_in": int(raw_prot.shape[1]), "n_kept": int(len(_pp.keep_cols_)),
+        "min_obs_frac": 0.5, "impute": "metaboanalyst",
     }
 
     # ---- ML divergence: ordinal stage (reverts to raw proteomics) ----

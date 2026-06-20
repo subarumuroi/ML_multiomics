@@ -37,6 +37,7 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from ml_multiomics import OmicsDataset, AnalysisSpec
+from ml_multiomics.preprocessing import FittablePreprocessor
 from ml_multiomics.analysis import (
     systematic_assessment, integration_assessment,
     qc_summary, differential_expression, over_representation, gsea_ranked_list,
@@ -151,6 +152,16 @@ def run_psilocybin_report(
         "de_provenance": de["provenance"].to_markdown(),
         "gsea_ranked": (gsea_ranked_list(de["volcano"], de["volcano"]["contrast"].iloc[0]).head(50)
                         if len(de["volcano"]) else pd.Series(dtype=float)),
+    }
+
+    # ---- preprocessing demonstration: the steps + intermediate shapes the ML refits
+    #      INSIDE every CV/permutation fold (shown once here on the full data) ----
+    _pp = FittablePreprocessor(omics_type="proteomics", impute="metaboanalyst", min_obs_frac=0.5)
+    _pp.fit(prot_raw)
+    out["preprocess"] = {
+        "provenance": _pp.provenance.to_markdown(),
+        "n_in": int(prot_raw.shape[1]), "n_kept": int(len(_pp.keep_cols_)),
+        "min_obs_frac": 0.5, "impute": "metaboanalyst",
     }
 
     # ---- 2. ML divergence: yield (regression) ----
