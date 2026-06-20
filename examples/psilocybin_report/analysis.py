@@ -204,19 +204,51 @@ def run_psilocybin_report(
     return out
 
 
+import pickle
+
+_CACHE_DIR = Path(__file__).resolve().parent / "_cache"
+
+
+def _cache_path(compound, n_permutations, stability_bootstrap, run_construct) -> Path:
+    _CACHE_DIR.mkdir(exist_ok=True)
+    return _CACHE_DIR / f"results_{compound}_p{n_permutations}_b{stability_bootstrap}_c{int(run_construct)}.pkl"
+
+
+def get_results(compound: str = "psilocybin_ext", *, n_permutations: int = 49,
+                stability_bootstrap: int = 10, run_construct: bool = False,
+                refresh: bool = False, **kw) -> dict:
+    """Load cached results if present (instant), else compute once and cache.
+
+    This is what the .qmd calls: the heavy ML runs ONCE (via `python analysis.py` or the
+    first render); every subsequent render loads the pickle and is instant -- so a report
+    is never 'stuck' rendering. Delete _cache/ or pass refresh=True to recompute.
+    """
+    path = _cache_path(compound, n_permutations, stability_bootstrap, run_construct)
+    if path.exists() and not refresh:
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    res = run_psilocybin_report(compound, n_permutations=n_permutations,
+                                stability_bootstrap=stability_bootstrap,
+                                run_construct=run_construct, **kw)
+    with open(path, "wb") as f:
+        pickle.dump(res, f)
+    return res
+
+
 if __name__ == "__main__":
-    # quick smoke (reduced compute): confirm the wiring runs on the real data
-    r = run_psilocybin_report(n_permutations=19, stability_bootstrap=5,
-                              reducers=("pca", "wgcna"), run_construct=False)
-    print(f"bioreactors={r['n_bioreactors']} blocks={r['block_sizes']}")
-    print("standard DE volcano rows:", len(r["standard"]["de_volcano"]))
-    yp = r["yield"]["systematic"]["panel"]
-    print("yield panel rows:", len(yp))
-    for row in yp[:6]:
-        if "error" in row:
-            print("  ERR", row["approach"], row["error"][:60]); continue
-        print("  %-30s cv=%.3f perm_p=%.3g overfit=%s" % (
-            row["approach"], row["cv_score"], row["permutation"]["p_value"], row["overfit"]["overfit"]))
-    if "integration" in r["yield"]:
-        g = r["yield"]["integration"]["groups"][0]
-        print("integration verdict:", g["discriminator"].get("verdict", g["discriminator"].get("note")))
+    # build/refresh the results cache (so `quarto render` is instant). Prints progress.
+    import argparse, time
+    ap = argparse.ArgumentParser(description="Compute + cache psilocybin report results.")
+    ap.add_argument("--compound", default="psilocybin_ext")
+    ap.add_argument("--n-permutations", type=int, default=49)
+    ap.add_argument("--stability-bootstrap", type=int, default=10)
+    ap.add_argument("--construct", action="store_true", help="also run the C1-vs-C2 assessment")
+    a = ap.parse_args()
+    print(f"computing {a.compound} (n_perm={a.n_permutations}, boot={a.stability_bootstrap}, "
+          f"construct={a.construct}) ...", flush=True)
+    t = time.perf_counter()
+    res = get_results(a.compound, n_permutations=a.n_permutations,
+                      stability_bootstrap=a.stability_bootstrap, run_construct=a.construct, refresh=True)
+    print(f"done in {time.perf_counter()-t:.0f}s; cached at "
+          f"{_cache_path(a.compound, a.n_permutations, a.stability_bootstrap, a.construct)}")
+    print(f"  bioreactors={res['n_bioreactors']} yield panel rows={len(res['yield']['systematic']['panel'])}")

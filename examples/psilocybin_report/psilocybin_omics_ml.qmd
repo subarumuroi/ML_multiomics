@@ -15,25 +15,24 @@ execute:
 ---
 
 This report relates phase-3 **proteomics + intracellular metabolomics** to a metabolite
-**yield**, for a non-specialist reader. It is computed **section by section** (each step in its
-own cell) so you can watch progress and read each part as it finishes:
+**yield**, for a non-specialist reader. It explains every step: the declared **setup**, the
+conventional **standard analysis** (QC -> preprocessing -> DE -> enrichment), a marked **ML
+divergence point**, the **ML assessment** (judged by *is there signal?*, *does it recur?*,
+*what is it?* — not a single accuracy score), the plain-language **interpretation**, and a
+**provenance appendix**.
 
-1. **Setup** — the decisions a human made (declared up front).
-2. **Standard analysis** — the conventional lab pipeline (QC -> preprocessing -> DE -> enrichment).
-3. A marked **ML divergence point**, after which we manipulate the data for machine learning.
-4. **The ML assessment** — every applicable method, judged by *is there signal?*, *does it recur?*,
-   *what is it?* — not by a single accuracy score.
-5. **Interpretation** — the plain-language conclusion.
-6. **Provenance appendix** — the exact recorded steps, for AI-free reproduction.
+> **Rendering is instant.** The heavy ML runs **once** via `python analysis.py` (which prints
+> progress and caches the results); this report just loads the cache. If no cache exists the
+> first render computes it once (a few minutes) and saves it. Re-rendering never "hangs".
 
 ```{python}
 #| echo: false
 #| output: false
 #| tags: [parameters]
 compound = "psilocybin_ext"
-# Fast, repeatable defaults (permutation p-resolution ~0.02). Raise to 199-999 for a
-# publication-grade p-value; deterministic at a fixed seed. run_construct adds the
-# secondary C1-vs-C2 question (roughly doubles runtime).
+# Must match the cached run (see `python analysis.py --help`). Raise n_permutations to
+# 199-999 for a publication-grade p-value (deterministic at a fixed seed). run_construct
+# adds the secondary C1-vs-C2 question.
 n_permutations = 49
 stability_bootstrap = 10
 run_construct = False
@@ -51,10 +50,12 @@ for cand in (HERE, HERE / "examples" / "psilocybin_report"):
 import analysis
 import pandas as pd
 from IPython.display import Markdown, display
-from ml_multiomics.analysis import systematic_assessment, integration_assessment
 
-FLAT = ("pca", "nmf")            # out-of-fold reducers for the supervised panel
-RED = ("pca", "nmf", "wgcna")    # reducers for the DIABLO integration
+# loads the cache (instant); computes + caches once if absent
+res = analysis.get_results(compound, n_permutations=n_permutations,
+                           stability_bootstrap=stability_bootstrap, run_construct=run_construct)
+setup = res["setup"]; std = res["standard"]; pp = res["preprocess"]
+ysys = res["yield"]["systematic"]; yint = res["yield"].get("integration")
 
 def panel_table(systematic):
     rows = []
@@ -119,10 +120,6 @@ def conclusion_md(setup, systematic, integ):
     lines.append(f"- **Reminder:** {setup['n_groups']} independent units; CV is only a gross-overfitting "
                  "check here, never a performance ranking.")
     return "\n".join(lines)
-
-# --- Step 0: load + declare (fast) ------------------------------------------------
-ctx = analysis.prepare(compound)
-setup = ctx["setup"]
 ```
 
 # 1. How this analysis was set up
@@ -132,7 +129,7 @@ more — it never guesses the experimental unit, picks layer roles, or combines 
 
 ```{python}
 #| echo: false
-Markdown("```\n" + ctx["spec_yield"].describe() + "\n```")
+Markdown("```\n" + res["yield"]["spec"] + "\n```")
 ```
 
 ```{python}
@@ -141,7 +138,7 @@ Markdown(
     f"- **Target:** `{compound}` external yield (phase 3).\n"
     f"- **Independent unit:** bioreactor (`F#C#_R#`) -- {setup['n_groups']} units, leave-one-"
     "bioreactor-out so no run leaks across train/test.\n"
-    f"- **Predictor blocks:** " + ", ".join(f"{b} ({n} features)" for b, n in ctx['block_sizes'].items()) + ".\n"
+    f"- **Predictor blocks:** " + ", ".join(f"{b} ({n} features)" for b, n in res['block_sizes'].items()) + ".\n"
     f"- **Excluded:** `met_ext_pb` is NOT a predictor -- external/pseudobatch metabolites are "
     "unreliable as features; they only *source the yield targets*.\n"
     f"- **Oversized block (auto-reduced before integration):** {setup['oversized_blocks']}.\n"
@@ -152,12 +149,6 @@ Markdown(
 ```
 
 # 2. Standard analysis (the lab-convention pipeline)
-
-```{python}
-#| echo: false
-# Step 1: standard analysis (QC + preprocessing demo + DE + GSEA input) -- a few seconds
-std = analysis.standard_section(ctx)
-```
 
 ## 2.1 Quality control -- per block
 
@@ -170,7 +161,6 @@ std["qc"]
 
 ```{python}
 #| echo: false
-pp = std["preprocess"]
 Markdown(
     "The preprocessing pipeline on the proteomics block. **For the standard analysis it runs once "
     "globally; for the ML below it is refit INSIDE every cross-validation fold on the training rows "
@@ -219,9 +209,9 @@ std["gsea_ranked"].head(10).round(3).to_frame("rank_stat")
 
 # === ML divergence point ===
 
-Everything above is the standard descriptive pipeline. Below, three things change deliberately:
-preprocessing (and any reduction) is **refit inside each fold** on training rows only; the
-oversized proteomics block is **reduced** (PCA / NMF / WGCNA) before integration; and
+Everything above is the standard descriptive pipeline. In the ML below, three things change
+deliberately: preprocessing (and any reduction) is **refit inside each fold** on training rows
+only; the oversized proteomics block is **reduced** (PCA / NMF / WGCNA) before integration; and
 **cross-validation is reported only as a binary overfitting flag**, never a score — signal comes
 from permutation, trust from stability.
 
@@ -240,9 +230,6 @@ Markdown(
 
 ```{python}
 #| echo: false
-# Step 2: the supervised method matrix (permutation + stability) -- the longest cell
-ysys = systematic_assessment(ctx["ds"], ctx["spec_yield"], n_factors=5, reducers=FLAT,
-                             n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=0)
 panel_table(ysys)
 ```
 
@@ -267,15 +254,8 @@ display(ysys["consensus"].head(12))
 Markdown("The core block-imbalance argument. **naive** integrates raw proteomics directly; the "
          "reduced variants reduce it to modules/factors first. Compare the **selection stability**: "
          "an individual-protein list that doesn't recur is not trustworthy, whereas stable modules/"
-         "factors are -- and expand back to member proteins for biology. (Runs DIABLO + WGCNA in R.)")
-```
-
-```{python}
-#| echo: false
-# Step 3: DIABLO integration, naive vs reduced (R; a few minutes)
-yint = integration_assessment(ctx["ds"], ctx["spec_yield"], reducers=RED, n_factors=5,
-                              stability_bootstrap=stability_bootstrap, seed=0)
-Markdown(integration_md(yint))
+         "factors are -- and expand back to member proteins for biology.")
+display(Markdown(integration_md(yint)) if yint else Markdown("_(integration not in cache)_"))
 ```
 
 ## 3.2 What each model assumes (and where it diverges, on THIS data)
@@ -287,20 +267,18 @@ Markdown(cards_md(ysys))
 
 # 4. Construct C1 vs C2 (nominal; which omics separate the engineered constructs)
 
-A second, categorical question (set `run_construct = True`). **Caveat (a declared divergence):**
-construct C is crossed with fermentation batch F, so a C1-vs-C2 split may partly reflect batch.
+A second, categorical question (set `run_construct = True` and rebuild the cache). **Caveat (a
+declared divergence):** construct C is crossed with fermentation batch F, so a C1-vs-C2 split may
+partly reflect batch.
 
 ```{python}
 #| echo: false
-if run_construct:
-    csys = systematic_assessment(ctx["ds"], ctx["spec_construct"], n_factors=5, reducers=FLAT,
-                                 n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=0)
-    cint = integration_assessment(ctx["ds"], ctx["spec_construct"], reducers=RED, n_factors=5,
-                                  stability_bootstrap=stability_bootstrap, seed=0)
-    display(panel_table(csys)); display(Markdown(integration_md(cint)))
+if "construct" in res:
+    display(panel_table(res["construct"]["systematic"]))
+    if "integration" in res["construct"]:
+        display(Markdown(integration_md(res["construct"]["integration"])))
 else:
-    csys = cint = None
-    display(Markdown("_Construct (nominal) assessment not run (`run_construct = False`). "
+    display(Markdown("_Construct (nominal) assessment not in this cache (`run_construct = False`). "
                      "Enable it for the full two-question report._"))
 ```
 
@@ -332,6 +310,7 @@ display(Markdown(std["de_provenance"]))
 
 ```{python}
 #| echo: false
-Markdown("Change the `compound` parameter (or render with `-P compound:tryptamine_ext`). Available: "
+Markdown("Rebuild the cache for another compound: `python analysis.py --compound tryptamine_ext`, "
+         "then set `compound` above. Available: "
          + ", ".join(f"`{c}`" for c in analysis.available_compounds()[:12]) + " ...")
 ```

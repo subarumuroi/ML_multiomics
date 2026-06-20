@@ -15,23 +15,21 @@ execute:
 ---
 
 Banana ripening is the package's **arbitrary external data** demonstrator: nothing about it is
-hardcoded in the library. It is computed **section by section** (each step in its own cell) so you
-can watch progress and read each part as it finishes: the declared **setup**, the conventional
+hardcoded in the library. It explains every step: the declared **setup**, the conventional
 **standard analysis**, a marked **ML divergence point**, the **ML assessment** (judged by signal +
 stability, not a single score), the plain-language **interpretation**, and a **provenance
 appendix**. Four omics blocks over 9 fruit (3 ripening stages x 3 replicates); each fruit is its
-own independent unit; the target is the ORDERED stage (Green < Ripe < Over).
+own independent unit; the target is the ORDERED stage (Green < Ripe < Over). It also demonstrates
+**reverting an upstream step before ML** (the lab's pre-imputed proteomics is used for the
+standard section; ML reverts to the raw un-imputed file).
 
-It also demonstrates **reverting an upstream step before ML**: the lab shipped a pre-imputed
-proteomics file (used by the standard section), but for ML we revert to the raw un-imputed
-proteomics so per-fold imputation is leakage-free from raw.
+> **Rendering is instant.** The heavy ML runs **once** via `python analysis.py` (prints progress,
+> caches results); this report loads the cache. If absent, the first render computes + caches once.
 
 ```{python}
 #| echo: false
 #| output: false
 #| tags: [parameters]
-# Fast, repeatable defaults (permutation p-resolution ~0.02). Raise to 199-999 for a
-# publication-grade p-value; deterministic at a fixed seed.
 n_permutations = 49
 stability_bootstrap = 10
 ```
@@ -48,9 +46,10 @@ for cand in (HERE, HERE / "examples" / "banana_report"):
 import analysis
 import pandas as pd
 from IPython.display import Markdown, display
-from ml_multiomics.analysis import systematic_assessment, integration_assessment
 
-RED = ("pca", "nmf")    # WGCNA omitted at n=9 (needs >= ~15-20 samples)
+res = analysis.get_results(n_permutations=n_permutations, stability_bootstrap=stability_bootstrap)
+setup = res["setup"]; std = res["standard"]; pp = res["preprocess"]
+ssys = res["stage"]["systematic"]; sint = res["stage"].get("integration")
 
 def panel_table(systematic):
     rows = []
@@ -113,10 +112,6 @@ def conclusion_md(setup, systematic, integ):
     lines.append(f"- **Reminder:** {setup['n_groups']} independent fruit; CV is a gross-overfitting "
                  "check only, not a ranking.")
     return "\n".join(lines)
-
-# --- Step 0: load + declare (fast) ------------------------------------------------
-ctx = analysis.prepare()
-setup = ctx["setup"]
 ```
 
 # 1. How this analysis was set up
@@ -126,15 +121,15 @@ guesses the unit, picks roles, or combines layers on its own.
 
 ```{python}
 #| echo: false
-Markdown("```\n" + ctx["spec"].describe() + "\n```")
+Markdown("```\n" + res["stage"]["spec"] + "\n```")
 ```
 
 ```{python}
 #| echo: false
 Markdown(
     f"- **Independent unit:** each fruit ({setup['n_groups']} units), leave-one-out validated.\n"
-    f"- **Target:** ripening stage, ORDINAL (Green < Ripe < Over); counts {ctx['stage_counts']}.\n"
-    f"- **Predictor blocks:** " + ", ".join(f"{b} ({n})" for b, n in ctx['block_sizes'].items()) + ".\n"
+    f"- **Target:** ripening stage, ORDINAL (Green < Ripe < Over); counts {res['stage_counts']}.\n"
+    f"- **Predictor blocks:** " + ", ".join(f"{b} ({n})" for b, n in res['block_sizes'].items()) + ".\n"
     f"- **Oversized (auto-reduced before integration):** {setup['oversized_blocks']}.\n"
     f"- **Upstream revert:** ML uses the RAW un-imputed proteomics (standard section uses the lab's "
     "pre-imputed file), declared via the spec's raw_sources -- per-fold imputation is clean.\n"
@@ -144,11 +139,6 @@ Markdown(
 ```
 
 # 2. Standard analysis (the lab-convention pipeline)
-
-```{python}
-#| echo: false
-std = analysis.standard_section(ctx)   # QC + preprocessing demo + DE + GSEA input (a few seconds)
-```
 
 ## 2.1 Quality control
 
@@ -161,7 +151,6 @@ std["qc"]
 
 ```{python}
 #| echo: false
-pp = std["preprocess"]
 Markdown(
     "Applied to proteomics. **Run once globally for the standard analysis; refit INSIDE every CV "
     "fold (train rows only) for the ML below** -- leakage-free. Steps: detection filter "
@@ -218,16 +207,12 @@ Markdown(
     "**How to read the panel.** `n_inputs` = features seen (after filter/reduction). "
     "`balanced_accuracy/accuracy` = leave-one-out CV (a SANITY check). `perm_p` = permutation p; "
     "`signal?` = significant. `overfit?` = large train-vs-CV gap. `n_stable` = selected features that "
-    "recur under resampling. `perm_p` blank = permutation skipped for a very large naive design. The "
-    "Ordinal model respects the stage order; the others treat it as nominal (a declared divergence)."
+    "recur under resampling. The Ordinal model respects the stage order; others treat it as nominal."
 )
 ```
 
 ```{python}
 #| echo: false
-# the supervised method matrix (permutation + stability) -- the longest cell
-ssys = systematic_assessment(ctx["ds"], ctx["spec"], n_factors=5, reducers=RED,
-                             n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=0)
 panel_table(ssys)
 ```
 
@@ -250,14 +235,8 @@ display(ssys["consensus"].head(12))
 #| echo: false
 Markdown("Compare the **selection stability**: a list of individual features that doesn't recur "
          "under resampling is not trustworthy; stable modules/factors are (and expand to member "
-         "features for biology). (Runs DIABLO in R.)")
-```
-
-```{python}
-#| echo: false
-sint = integration_assessment(ctx["ds"], ctx["spec"], reducers=RED, n_factors=5,
-                              stability_bootstrap=stability_bootstrap, seed=0)
-Markdown(integration_md(sint))
+         "features for biology).")
+display(Markdown(integration_md(sint)) if sint else Markdown("_(integration not in cache)_"))
 ```
 
 ## 3.2 What each model assumes (and where it diverges, on THIS data)

@@ -213,3 +213,7 @@ Thumbs.db
 results/
 *.pyc
 __pycache__/
+
+# report results cache (regenerate with python analysis.py)
+examples/**/_cache/
+*.pkl

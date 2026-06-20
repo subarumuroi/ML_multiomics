@@ -169,15 +169,45 @@ def run_banana_report(
     return out
 
 
+import pickle
+
+_CACHE_DIR = Path(__file__).resolve().parent / "_cache"
+
+
+def _cache_path(n_permutations, stability_bootstrap) -> Path:
+    _CACHE_DIR.mkdir(exist_ok=True)
+    return _CACHE_DIR / f"results_stage_p{n_permutations}_b{stability_bootstrap}.pkl"
+
+
+def get_results(*, n_permutations: int = 49, stability_bootstrap: int = 10,
+                refresh: bool = False, **kw) -> dict:
+    """Load cached results if present (instant), else compute once and cache.
+
+    The .qmd calls this: the heavy ML runs ONCE (via `python analysis.py` or the first
+    render) and every subsequent render loads the pickle and is instant. Delete _cache/
+    or pass refresh=True to recompute.
+    """
+    path = _cache_path(n_permutations, stability_bootstrap)
+    if path.exists() and not refresh:
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    res = run_banana_report(n_permutations=n_permutations,
+                            stability_bootstrap=stability_bootstrap, **kw)
+    with open(path, "wb") as f:
+        pickle.dump(res, f)
+    return res
+
+
 if __name__ == "__main__":
-    r = run_banana_report(n_permutations=19, stability_bootstrap=5,
-                          reducers=("pca",), run_integration=False)
-    print(f"samples={r['n_samples']} blocks={r['block_sizes']} stages={r['stage_counts']}")
-    print("standard DE rows:", len(r["standard"]["de_volcano"]))
-    print("spec:\n" + r["stage"]["spec"])
-    for row in r["stage"]["systematic"]["panel"]:
-        if "error" in row:
-            print("  ERR", row["approach"], row["error"][:60]); continue
-        print("  %-30s inputs=%-5d cv=%.3f perm_p=%.3g overfit=%s" % (
-            row["approach"], row["n_inputs"], row["cv_score"],
-            row["permutation"].get("p_value", float("nan")), row["overfit"]["overfit"]))
+    # build/refresh the results cache (so `quarto render` is instant). Prints progress.
+    import argparse, time
+    ap = argparse.ArgumentParser(description="Compute + cache banana report results.")
+    ap.add_argument("--n-permutations", type=int, default=49)
+    ap.add_argument("--stability-bootstrap", type=int, default=10)
+    a = ap.parse_args()
+    print(f"computing banana (n_perm={a.n_permutations}, boot={a.stability_bootstrap}) ...", flush=True)
+    t = time.perf_counter()
+    res = get_results(n_permutations=a.n_permutations, stability_bootstrap=a.stability_bootstrap, refresh=True)
+    print(f"done in {time.perf_counter()-t:.0f}s; cached at "
+          f"{_cache_path(a.n_permutations, a.stability_bootstrap)}")
+    print(f"  fruit={res['n_samples']} stage panel rows={len(res['stage']['systematic']['panel'])}")
