@@ -46,9 +46,12 @@ import analysis
 import pandas as pd
 from IPython.display import Markdown, display
 
+# run_construct: the secondary categorical (C1 vs C2) assessment. Off by default to keep
+# the default render quick (yield is the headline); set True for the full two-question report.
+run_construct = False
 res = analysis.run_psilocybin_report(
     compound, n_permutations=n_permutations, stability_bootstrap=stability_bootstrap,
-    reducers=("pca", "nmf", "wgcna"), run_integration=True, run_construct=True)
+    reducers=("pca", "nmf", "wgcna"), run_integration=True, run_construct=run_construct)
 
 def panel_table(systematic):
     rows = []
@@ -195,17 +198,19 @@ Markdown(cards_md(res["yield"]["systematic"]))
 
 # Part 3 -- Construct C1 vs C2 (nominal; which omics separate the engineered constructs)
 
-A second, categorical question on the same data. **Caveat (a declared divergence):** construct C
-is crossed with fermentation batch F, so a C1-vs-C2 separation may partly reflect batch.
+A second, categorical question on the same data (set `run_construct = True` to enable).
+**Caveat (a declared divergence):** construct C is crossed with fermentation batch F, so a
+C1-vs-C2 separation may partly reflect batch.
 
 ```{python}
 #| echo: false
-panel_table(res["construct"]["systematic"])
-```
-
-```{python}
-#| echo: false
-Markdown(integration_md(res["construct"]["integration"]) if "integration" in res["construct"] else "")
+if "construct" in res:
+    display(panel_table(res["construct"]["systematic"]))
+    if "integration" in res["construct"]:
+        display(Markdown(integration_md(res["construct"]["integration"])))
+else:
+    display(Markdown("_Construct (nominal) assessment not run in this render "
+                     "(`run_construct = False`). Enable it for the full two-question report._"))
 ```
 
 # Part 4 -- How to read this
