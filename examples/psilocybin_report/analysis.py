@@ -39,9 +39,10 @@ if str(_SRC) not in sys.path:
 from ml_multiomics import OmicsDataset, AnalysisSpec
 from ml_multiomics.preprocessing import FittablePreprocessor
 from ml_multiomics.analysis import (
-    systematic_assessment, integration_assessment,
+    systematic_assessment, integration_assessment, detect_oversized_blocks,
     qc_summary, differential_expression, over_representation, gsea_ranked_list,
 )
+from ml_multiomics.validation import permutation_resolution
 
 DEFAULT_MASTER = Path("C:/Users/uqkmuroi/gitcode/ml_psi_mofa/data/master_multiomics.csv")
 DEFAULT_YIELDS = Path("C:/Users/uqkmuroi/gitcode/ml_psi_mofa/data/pseudobatched-external-yields-rates.csv")
@@ -115,6 +116,50 @@ def _construct_spec(ds: OmicsDataset) -> AnalysisSpec:
     )
 
 
+def prepare(compound: str = "psilocybin_ext", *, master_path: Path = DEFAULT_MASTER,
+            yields_path: Path = DEFAULT_YIELDS) -> dict:
+    """Load + align + declare specs + cheap setup stats. Fast: the report renders the
+    setup/standard sections from this BEFORE the heavy ML cells run."""
+    ds = load_psilocybin(master_path)
+    yld = load_yield(compound, yields_path)
+    common = [b for b in ds.common_samples() if b in yld.index]
+    for nm in ds.block_names:
+        ds.blocks[nm].data = ds.blocks[nm].data.loc[common]
+    ds.sample_meta = ds.sample_meta.loc[common]
+    yld = yld.loc[common]
+    groups = ds.sample_meta["bioreactor"].to_numpy()
+    yv = yld.to_numpy(dtype=float)
+    setup = {
+        "n_groups": int(len(set(groups))),
+        "baseline": float(np.sqrt(np.mean((yv - yv.mean()) ** 2))),
+        "baseline_kind": "predict-mean RMSE (R2=0)",
+        "resolution": permutation_resolution(groups, yv),
+        "oversized_blocks": detect_oversized_blocks(ds),
+    }
+    return {"ds": ds, "yld": yld, "common": common, "compound": compound,
+            "spec_yield": _yield_spec(ds, compound, yld), "spec_construct": _construct_spec(ds),
+            "n_bioreactors": len(common), "setup": setup,
+            "block_sizes": {b: ds.blocks[b].shape[1] for b in ds.block_names}}
+
+
+def standard_section(ctx: dict) -> dict:
+    """Standard analysis (QC + DE + preprocessing demo + GSEA-ranked). Fast; runs before ML."""
+    ds, common = ctx["ds"], ctx["common"]
+    prot_raw = ds.get("proteomics")
+    construct = ds.sample_meta["C"].to_numpy()
+    de = differential_expression(prot_raw, unit_labels=common, condition_labels=construct, logx=True)
+    pp = FittablePreprocessor(omics_type="proteomics", impute="metaboanalyst", min_obs_frac=0.5).fit(prot_raw)
+    return {
+        "qc": qc_summary(ds)["per_block"],
+        "de_volcano": de["volcano"], "de_n_units": de["n_units"],
+        "de_provenance": de["provenance"].to_markdown(),
+        "gsea_ranked": (gsea_ranked_list(de["volcano"], de["volcano"]["contrast"].iloc[0]).head(50)
+                        if len(de["volcano"]) else pd.Series(dtype=float)),
+        "preprocess": {"provenance": pp.provenance.to_markdown(), "n_in": int(prot_raw.shape[1]),
+                       "n_kept": int(len(pp.keep_cols_)), "min_obs_frac": 0.5, "impute": "metaboanalyst"},
+    }
+
+
 def run_psilocybin_report(
     compound: str = "psilocybin_ext",
     *,
@@ -128,67 +173,33 @@ def run_psilocybin_report(
     n_factors: int = 5,
     seed: int = 0,
 ) -> dict:
-    """Full report engine: standard replication + yield + construct assessments."""
-    ds = load_psilocybin(master_path)
-    yld = load_yield(compound, yields_path)
-    # restrict to bioreactors that have a yield value, then re-align blocks
-    common = [b for b in ds.common_samples() if b in yld.index]
-    for nm in ds.block_names:
-        ds.blocks[nm].data = ds.blocks[nm].data.loc[common]
-    ds.sample_meta = ds.sample_meta.loc[common]
-    yld = yld.loc[common]
+    """Full report engine (thin wrapper over the composable pieces below).
 
-    out = {"compound": compound, "n_bioreactors": len(common),
-           "block_sizes": {b: ds.blocks[b].shape[1] for b in ds.block_names}}
-
-    # ---- 1. STANDARD analysis replication (descriptive; before ML divergence) ----
-    prot_raw = ds.get("proteomics")
-    construct = ds.sample_meta["C"].to_numpy()
-    de = differential_expression(prot_raw, unit_labels=common, condition_labels=construct, logx=True)
-    out["standard"] = {
-        "qc": qc_summary(ds)["per_block"],
-        "de_volcano": de["volcano"],
-        "de_n_units": de["n_units"],
-        "de_provenance": de["provenance"].to_markdown(),
-        "gsea_ranked": (gsea_ranked_list(de["volcano"], de["volcano"]["contrast"].iloc[0]).head(50)
-                        if len(de["volcano"]) else pd.Series(dtype=float)),
-    }
-
-    # ---- preprocessing demonstration: the steps + intermediate shapes the ML refits
-    #      INSIDE every CV/permutation fold (shown once here on the full data) ----
-    _pp = FittablePreprocessor(omics_type="proteomics", impute="metaboanalyst", min_obs_frac=0.5)
-    _pp.fit(prot_raw)
-    out["preprocess"] = {
-        "provenance": _pp.provenance.to_markdown(),
-        "n_in": int(prot_raw.shape[1]), "n_kept": int(len(_pp.keep_cols_)),
-        "min_obs_frac": 0.5, "impute": "metaboanalyst",
-    }
-
-    # ---- 2. ML divergence: yield (regression) ----
-    spec_y = _yield_spec(ds, compound, yld)
-    out["yield"] = {
-        "systematic": systematic_assessment(
-            ds, spec_y, n_factors=n_factors, reducers=tuple(r for r in reducers if r != "wgcna"),
-            n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=seed),
-        "spec": spec_y.describe(),
-    }
+    The report .qmd does NOT call this -- it calls prepare() / standard_section() and the
+    engine functions across SEPARATE cells so each section renders as it completes (one
+    monolithic cell looks 'stuck' on Quarto). This wrapper is for CLI / `python analysis.py`.
+    """
+    ctx = prepare(compound, master_path=master_path, yields_path=yields_path)
+    std = standard_section(ctx)
+    out = {"compound": compound, "n_bioreactors": ctx["n_bioreactors"],
+           "block_sizes": ctx["block_sizes"], "setup": ctx["setup"],
+           "standard": {k: std[k] for k in ("qc", "de_volcano", "de_n_units", "de_provenance", "gsea_ranked")},
+           "preprocess": std["preprocess"]}
+    flat = tuple(r for r in reducers if r != "wgcna")          # supervised panel: out-of-fold reducers
+    out["yield"] = {"spec": ctx["spec_yield"].describe(), "systematic": systematic_assessment(
+        ctx["ds"], ctx["spec_yield"], n_factors=n_factors, reducers=flat,
+        n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=seed)}
     if run_integration:
         out["yield"]["integration"] = integration_assessment(
-            ds, spec_y, reducers=reducers, n_factors=n_factors,
+            ctx["ds"], ctx["spec_yield"], reducers=reducers, n_factors=n_factors,
             stability_bootstrap=stability_bootstrap, seed=seed)
-
-    # ---- 2b. ML divergence: construct C1 vs C2 (nominal) ----
     if run_construct:
-        spec_c = _construct_spec(ds)
-        out["construct"] = {
-            "systematic": systematic_assessment(
-                ds, spec_c, n_factors=n_factors, reducers=tuple(r for r in reducers if r != "wgcna"),
-                n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=seed),
-            "spec": spec_c.describe(),
-        }
+        out["construct"] = {"spec": ctx["spec_construct"].describe(), "systematic": systematic_assessment(
+            ctx["ds"], ctx["spec_construct"], n_factors=n_factors, reducers=flat,
+            n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=seed)}
         if run_integration:
             out["construct"]["integration"] = integration_assessment(
-                ds, spec_c, reducers=reducers, n_factors=n_factors,
+                ctx["ds"], ctx["spec_construct"], reducers=reducers, n_factors=n_factors,
                 stability_bootstrap=stability_bootstrap, seed=seed)
     return out
 

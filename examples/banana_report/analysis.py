@@ -35,9 +35,10 @@ from ml_multiomics import OmicsDataset, AnalysisSpec
 from ml_multiomics.core import parse_delimited
 from ml_multiomics.preprocessing import FittablePreprocessor
 from ml_multiomics.analysis import (
-    systematic_assessment, integration_assessment,
+    systematic_assessment, integration_assessment, detect_oversized_blocks,
     qc_summary, differential_expression, gsea_ranked_list,
 )
+from ml_multiomics.validation import permutation_resolution
 
 DATA = Path(__file__).resolve().parents[2] / "data"
 _ORDER = ["Green", "Ripe", "Over"]
@@ -101,57 +102,69 @@ def _stage_spec(ds: OmicsDataset, raw_prot: pd.DataFrame) -> AnalysisSpec:
     )
 
 
+def prepare() -> dict:
+    """Load + align + declare the ordinal-stage spec + cheap setup stats. Fast; the report
+    renders setup/standard from this BEFORE the heavy ML cells run."""
+    ds = load_banana()
+    common = ds.common_samples()
+    raw_prot = _raw_proteomics(common)
+    stage = ds.sample_meta["stage"].to_numpy()
+    groups = ds.sample_meta["unit"].to_numpy()
+    setup = {
+        "n_groups": int(len(set(groups))),
+        "baseline": float(pd.Series(stage).value_counts().iloc[0] / len(stage)),
+        "baseline_kind": "majority-class accuracy",
+        "resolution": permutation_resolution(groups, stage),
+        "oversized_blocks": detect_oversized_blocks(ds),
+    }
+    return {"ds": ds, "common": common, "raw_prot": raw_prot, "spec": _stage_spec(ds, raw_prot),
+            "n_samples": len(common), "setup": setup,
+            "stage_counts": ds.sample_meta["stage"].value_counts().to_dict(),
+            "block_sizes": {b: ds.blocks[b].shape[1] for b in ds.block_names}}
+
+
+def standard_section(ctx: dict) -> dict:
+    """Standard analysis (QC + DE + preprocessing demo + GSEA-ranked). Fast; runs before ML."""
+    ds, common, raw_prot = ctx["ds"], ctx["common"], ctx["raw_prot"]
+    prot_std = ds.get("proteomics")                       # lab's pre-imputed file (standard section)
+    stage = ds.sample_meta["stage"].to_numpy()
+    de = differential_expression(prot_std, unit_labels=common, condition_labels=stage, logx=True)
+    pp = FittablePreprocessor(omics_type="proteomics", impute="metaboanalyst", min_obs_frac=0.5).fit(raw_prot)
+    return {
+        "qc": qc_summary(ds)["per_block"],
+        "de_volcano": de["volcano"], "de_n_units": de["n_units"],
+        "de_provenance": de["provenance"].to_markdown(),
+        "gsea_ranked": (gsea_ranked_list(de["volcano"], de["volcano"]["contrast"].iloc[0]).head(40)
+                        if len(de["volcano"]) else pd.Series(dtype=float)),
+        "preprocess": {"provenance": pp.provenance.to_markdown(), "n_in": int(raw_prot.shape[1]),
+                       "n_kept": int(len(pp.keep_cols_)), "min_obs_frac": 0.5, "impute": "metaboanalyst"},
+    }
+
+
 def run_banana_report(
     *,
-    n_permutations: int = 99,
-    stability_bootstrap: int = 20,
+    n_permutations: int = 49,
+    stability_bootstrap: int = 10,
     reducers=("pca", "nmf"),       # WGCNA omitted: n=9 is below its ~15-20 sample range
     run_integration: bool = True,
     n_factors: int = 5,
     seed: int = 0,
 ) -> dict:
-    ds = load_banana()
-    common = ds.common_samples()
-    raw_prot = _raw_proteomics(common)
-    spec = _stage_spec(ds, raw_prot)
-
-    out = {"n_samples": len(common),
-           "block_sizes": {b: ds.blocks[b].shape[1] for b in ds.block_names},
-           "stage_counts": ds.sample_meta["stage"].value_counts().to_dict()}
-
-    # ---- standard replication (uses the lab's pre-imputed proteomics) ----
-    prot_std = ds.get("proteomics")
-    stage = ds.sample_meta["stage"].to_numpy()
-    de = differential_expression(prot_std, unit_labels=common, condition_labels=stage, logx=True)
-    out["standard"] = {
-        "qc": qc_summary(ds)["per_block"],
-        "de_volcano": de["volcano"],
-        "de_n_units": de["n_units"],
-        "de_provenance": de["provenance"].to_markdown(),
-        "gsea_ranked": (gsea_ranked_list(de["volcano"], de["volcano"]["contrast"].iloc[0]).head(40)
-                        if len(de["volcano"]) else pd.Series(dtype=float)),
-    }
-
-    # ---- preprocessing demonstration: steps + intermediate shapes the ML refits inside
-    #      every fold (shown once on the RAW un-imputed proteomics the ML reverts to) ----
-    _pp = FittablePreprocessor(omics_type="proteomics", impute="metaboanalyst", min_obs_frac=0.5)
-    _pp.fit(raw_prot)
-    out["preprocess"] = {
-        "provenance": _pp.provenance.to_markdown(),
-        "n_in": int(raw_prot.shape[1]), "n_kept": int(len(_pp.keep_cols_)),
-        "min_obs_frac": 0.5, "impute": "metaboanalyst",
-    }
-
-    # ---- ML divergence: ordinal stage (reverts to raw proteomics) ----
-    out["stage"] = {
-        "spec": spec.describe(),
-        "systematic": systematic_assessment(
-            ds, spec, n_factors=n_factors, reducers=tuple(r for r in reducers if r != "wgcna"),
-            n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=seed),
-    }
+    """Thin wrapper over prepare()/standard_section() + the engine (for CLI; the .qmd calls
+    the pieces across cells so each section renders as it completes)."""
+    ctx = prepare()
+    std = standard_section(ctx)
+    out = {"n_samples": ctx["n_samples"], "block_sizes": ctx["block_sizes"],
+           "stage_counts": ctx["stage_counts"], "setup": ctx["setup"],
+           "standard": {k: std[k] for k in ("qc", "de_volcano", "de_n_units", "de_provenance", "gsea_ranked")},
+           "preprocess": std["preprocess"]}
+    flat = tuple(r for r in reducers if r != "wgcna")
+    out["stage"] = {"spec": ctx["spec"].describe(), "systematic": systematic_assessment(
+        ctx["ds"], ctx["spec"], n_factors=n_factors, reducers=flat,
+        n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=seed)}
     if run_integration:
         out["stage"]["integration"] = integration_assessment(
-            ds, spec, reducers=reducers, n_factors=n_factors,
+            ctx["ds"], ctx["spec"], reducers=reducers, n_factors=n_factors,
             stability_bootstrap=stability_bootstrap, seed=seed)
     return out
 

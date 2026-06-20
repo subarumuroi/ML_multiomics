@@ -15,19 +15,16 @@ execute:
 ---
 
 This report relates phase-3 **proteomics + intracellular metabolomics** to a metabolite
-**yield**, for a non-specialist reader. It is deliberately structured so you can follow
-*every* step:
+**yield**, for a non-specialist reader. It is computed **section by section** (each step in its
+own cell) so you can watch progress and read each part as it finishes:
 
-1. **How the analysis was set up** — the decisions a human made (declared up front).
-2. **Standard analysis** — the conventional lab pipeline (QC -> preprocessing -> differential
-   expression -> enrichment), so you can see the data is handled soundly.
-3. **A marked ML divergence point**, after which we manipulate the data for machine learning.
-4. **The ML assessment** — every applicable method, judged by *is there signal?*, *does it
-   recur?*, and *what is it?* — not by a single accuracy score.
+1. **Setup** — the decisions a human made (declared up front).
+2. **Standard analysis** — the conventional lab pipeline (QC -> preprocessing -> DE -> enrichment).
+3. A marked **ML divergence point**, after which we manipulate the data for machine learning.
+4. **The ML assessment** — every applicable method, judged by *is there signal?*, *does it recur?*,
+   *what is it?* — not by a single accuracy score.
 5. **Interpretation** — the plain-language conclusion.
-6. **Provenance appendix** — the exact recorded steps, for reproduction without any AI.
-
-Nothing here crowns a "best predictor": at a few dozen samples a single score is noise.
+6. **Provenance appendix** — the exact recorded steps, for AI-free reproduction.
 
 ```{python}
 #| echo: false
@@ -35,9 +32,11 @@ Nothing here crowns a "best predictor": at a few dozen samples a single score is
 #| tags: [parameters]
 compound = "psilocybin_ext"
 # Fast, repeatable defaults (permutation p-resolution ~0.02). Raise to 199-999 for a
-# publication-grade p-value; results are deterministic at a fixed seed.
+# publication-grade p-value; deterministic at a fixed seed. run_construct adds the
+# secondary C1-vs-C2 question (roughly doubles runtime).
 n_permutations = 49
 stability_bootstrap = 10
+run_construct = False
 ```
 
 ```{python}
@@ -52,14 +51,10 @@ for cand in (HERE, HERE / "examples" / "psilocybin_report"):
 import analysis
 import pandas as pd
 from IPython.display import Markdown, display
+from ml_multiomics.analysis import systematic_assessment, integration_assessment
 
-# run_construct: the secondary categorical (C1 vs C2) assessment. Off by default to keep the
-# default render quick (yield is the headline); set True for the full two-question report.
-run_construct = False
-res = analysis.run_psilocybin_report(
-    compound, n_permutations=n_permutations, stability_bootstrap=stability_bootstrap,
-    reducers=("pca", "nmf", "wgcna"), run_integration=True, run_construct=run_construct)
-setup = res["yield"]["systematic"]["setup"]
+FLAT = ("pca", "nmf")            # out-of-fold reducers for the supervised panel
+RED = ("pca", "nmf", "wgcna")    # reducers for the DIABLO integration
 
 def panel_table(systematic):
     rows = []
@@ -102,93 +97,87 @@ def integration_md(integ):
     lines.append(f"\n**Verdict:** {g['discriminator'].get('verdict', g['discriminator'].get('note'))}")
     return "\n".join(lines)
 
-def conclusion_md(systematic, integ):
+def conclusion_md(setup, systematic, integ):
     sig = [r for r in systematic["panel"] if "error" not in r and r["permutation"].get("significant")]
     floor = setup["resolution"]["finest_two_sided_p"]
     cons = systematic["consensus"]
     lines = []
     if sig:
-        lines.append(f"- **Signal:** {len(sig)} of the assessed approaches beat the label-shuffled "
-                     f"null (permutation p<0.05); the finest p this design can produce is ~{floor:.2g}.")
+        lines.append(f"- **Signal:** {len(sig)} approach(es) beat the label-shuffled null (p<0.05); "
+                     f"the finest p this design can produce is ~{floor:.2g}.")
     else:
-        lines.append(f"- **Signal:** no approach cleared the permutation null at p<0.05 "
-                     f"(design's finest possible p ~{floor:.2g}). Treat associations as exploratory.")
+        lines.append(f"- **Signal:** no approach cleared p<0.05 (design's finest possible p ~{floor:.2g}); "
+                     "treat associations as exploratory.")
     if len(cons):
         top = ", ".join(f"`{f}`" for f in cons['feature'].head(6))
-        lines.append(f"- **Robust hypothesis:** the features recurring across the most approaches are "
-                     f"{top} -- these are the candidates worth following up (expand reduced modules/"
-                     f"factors to member proteins for enrichment).")
+        lines.append(f"- **Robust hypothesis:** features recurring across the most approaches: {top} "
+                     "(expand reduced modules/factors to member proteins for enrichment).")
     else:
-        lines.append("- **Robust hypothesis:** no feature was stable across multiple approaches -- "
-                     "the data does not support a confident feature list at this sample size.")
+        lines.append("- **Robust hypothesis:** nothing stable across multiple approaches at this n.")
     if integ and integ.get("groups"):
-        lines.append(f"- **Recommended representation:** "
-                     f"{integ['groups'][0]['discriminator'].get('verdict', '')}")
-    lines.append(f"- **Reminder:** {setup['n_groups']} independent units; cross-validation is only a "
-                 "gross-overfitting check here, never a performance ranking.")
+        lines.append(f"- **Recommended representation:** {integ['groups'][0]['discriminator'].get('verdict','')}")
+    lines.append(f"- **Reminder:** {setup['n_groups']} independent units; CV is only a gross-overfitting "
+                 "check here, never a performance ranking.")
     return "\n".join(lines)
+
+# --- Step 0: load + declare (fast) ------------------------------------------------
+ctx = analysis.prepare(compound)
+setup = ctx["setup"]
 ```
 
 # 1. How this analysis was set up
 
-These are the decisions a human made before any modelling. The engine executed exactly this and
-nothing more — it never guesses the experimental unit, picks layer roles, or combines layers on
-its own.
+The decisions a human made before any modelling. The engine executes exactly this and nothing
+more — it never guesses the experimental unit, picks layer roles, or combines layers on its own.
 
 ```{python}
 #| echo: false
-Markdown("```\n" + res["yield"]["spec"] + "\n```")
+Markdown("```\n" + ctx["spec_yield"].describe() + "\n```")
 ```
 
 ```{python}
 #| echo: false
 Markdown(
-    f"- **Independent unit:** bioreactor (`F#C#_R#`) -- {setup['n_groups']} units, validated by "
-    "leave-one-bioreactor-out so no run leaks across train/test.\n"
-    f"- **Predictor blocks:** " + ", ".join(f"{b} ({n} features)" for b, n in res['block_sizes'].items()) + ".\n"
-    f"- **Excluded:** `met_ext_pb` is NOT a predictor -- the external/pseudobatch metabolites are "
+    f"- **Target:** `{compound}` external yield (phase 3).\n"
+    f"- **Independent unit:** bioreactor (`F#C#_R#`) -- {setup['n_groups']} units, leave-one-"
+    "bioreactor-out so no run leaks across train/test.\n"
+    f"- **Predictor blocks:** " + ", ".join(f"{b} ({n} features)" for b, n in ctx['block_sizes'].items()) + ".\n"
+    f"- **Excluded:** `met_ext_pb` is NOT a predictor -- external/pseudobatch metabolites are "
     "unreliable as features; they only *source the yield targets*.\n"
-    f"- **Oversized block (auto-reduced before integration):** {setup['oversized_blocks']} "
-    "(proteomics dwarfs the metabolite blocks, so naive integration would be dominated by it).\n"
-    f"- **Baseline to beat:** {setup['baseline_kind']} = {setup['baseline']:.3g} "
-    "(any model must clear this to carry real signal).\n"
-    f"- **Statistical resolution floor:** the finest permutation p this design can produce is "
+    f"- **Oversized block (auto-reduced before integration):** {setup['oversized_blocks']}.\n"
+    f"- **Baseline to beat:** {setup['baseline_kind']} = {setup['baseline']:.3g}.\n"
+    f"- **Resolution floor:** the finest permutation p this design can produce is "
     f"~{setup['resolution']['finest_two_sided_p']:.2g} -- a single p-value cannot go below it."
 )
 ```
 
 # 2. Standard analysis (the lab-convention pipeline)
 
-This reproduces the conventional workflow on the *descriptive* (single, global) processed matrix,
-so you can confirm the data is sound before any ML.
+```{python}
+#| echo: false
+# Step 1: standard analysis (QC + preprocessing demo + DE + GSEA input) -- a few seconds
+std = analysis.standard_section(ctx)
+```
 
 ## 2.1 Quality control -- per block
 
 ```{python}
 #| echo: false
-Markdown("Sample/feature counts and missingness (on the per-bioreactor average). Proteomics "
-         "missingness is below-detection (a protein not seen in a run), handled downstream.")
-```
-
-```{python}
-#| echo: false
-res["standard"]["qc"]
+std["qc"]
 ```
 
 ## 2.2 Preprocessing -- the exact steps and intermediate sizes
 
 ```{python}
 #| echo: false
-pp = res["preprocess"]
+pp = std["preprocess"]
 Markdown(
-    "The preprocessing pipeline, applied to the proteomics block. **For the standard analysis it "
-    "runs once globally; for the ML below it is refit INSIDE every cross-validation fold on the "
-    "training rows only** (leakage-free). The trail below shows each step and the intermediate "
-    f"feature counts:\n\n"
+    "The preprocessing pipeline on the proteomics block. **For the standard analysis it runs once "
+    "globally; for the ML below it is refit INSIDE every cross-validation fold on the training rows "
+    "only** (leakage-free). Steps and intermediate feature counts:\n\n"
     f"- detection filter `min_obs_frac={pp['min_obs_frac']}` (keep features seen in >=50% of units), "
-    f"then variance filter, then impute (`{pp['impute']}`, left-censored for below-detection), then "
-    f"per-feature z-score.\n"
-    f"- proteomics features: **{pp['n_in']} -> {pp['n_kept']}** kept after filtering.\n"
+    f"variance filter, impute (`{pp['impute']}`, left-censored for below-detection), per-feature z-score.\n"
+    f"- proteomics features: **{pp['n_in']} -> {pp['n_kept']}** kept after filtering."
 )
 ```
 
@@ -202,17 +191,16 @@ Markdown(pp["provenance"])
 ```{python}
 #| echo: false
 Markdown(
-    f"Pairwise differential expression across the construct contrast, **aggregated to "
-    f"{res['standard']['de_n_units']} independent units first** (averaging repeated timepoints so we "
-    "don't pseudoreplicate). A Welch t-test on log abundances with Benjamini-Hochberg FDR, matching "
-    "the lab convention (verified to ~1e-15 against the reference R). Columns: `foldchange` (linear), "
-    "`log2fc`, raw `pvalue`, FDR `qvalue`. Top features by q-value:"
+    f"Pairwise DE across the construct contrast, **aggregated to {std['de_n_units']} independent "
+    "units first** (averaging repeated timepoints so we don't pseudoreplicate). Welch t on log "
+    "abundances + BH FDR, matching the lab convention (verified ~1e-15 vs the reference R). Columns: "
+    "`foldchange` (linear), `log2fc`, raw `pvalue`, FDR `qvalue`. Top features by q-value:"
 )
 ```
 
 ```{python}
 #| echo: false
-v = res["standard"]["de_volcano"]
+v = std["de_volcano"]
 v.reindex(v["qvalue"].sort_values().index).head(12)[["contrast", "feature", "log2fc", "pvalue", "qvalue"]]
 ```
 
@@ -220,55 +208,48 @@ v.reindex(v["qvalue"].sort_values().index).head(12)[["contrast", "feature", "log
 
 ```{python}
 #| echo: false
-Markdown("A ranked feature list (signed -log10 p) ready for the R clusterProfiler/fgsea GSEA path "
-         "-- GSEA itself is intentionally not reimplemented in pure Python. Over-representation "
-         "analysis (hypergeometric) is available the same way once gene sets are supplied.")
+Markdown("A ranked feature list (signed -log10 p) for the R clusterProfiler/fgsea GSEA path "
+         "(GSEA is intentionally not reimplemented in pure Python).")
 ```
 
 ```{python}
 #| echo: false
-res["standard"]["gsea_ranked"].head(10).round(3).to_frame("rank_stat")
+std["gsea_ranked"].head(10).round(3).to_frame("rank_stat")
 ```
 
 # === ML divergence point ===
 
-**Everything above is the standard descriptive pipeline.** Below, we manipulate the data for
-machine learning, and three things change deliberately:
-
-- preprocessing (and any reduction) is **refit inside each fold** on training rows only — so a
-  reported score can't be inflated by the held-out sample;
-- the oversized proteomics block is **reduced** (PCA / NMF / WGCNA) before integration;
-- **cross-validation is reported only as a binary overfitting flag**, never as a score — signal
-  comes from permutation, trust from stability.
+Everything above is the standard descriptive pipeline. Below, three things change deliberately:
+preprocessing (and any reduction) is **refit inside each fold** on training rows only; the
+oversized proteomics block is **reduced** (PCA / NMF / WGCNA) before integration; and
+**cross-validation is reported only as a binary overfitting flag**, never a score — signal comes
+from permutation, trust from stability.
 
 # 3. Yield assessment (regression -- the headline)
-
-Every applicable method runs on the representation it is valid on. "direct" uses all features;
-"REDUCER->method" reduces proteomics to a few factors first, then predicts.
 
 ```{python}
 #| echo: false
 Markdown(
-    "**How to read the panel.** `n_inputs` = number of features the model saw (after filtering/"
-    "reduction). `r2/rmse/mae` = leave-one-bioreactor-out CV error (a SANITY check, not a ranking; "
-    "R2<=0 means no better than the predict-the-mean baseline). `perm_p` = permutation p-value "
-    "(is the result beyond chance?); `signal?` = is it significant at this design. `overfit?` = "
-    "large train-vs-CV gap. `n_stable` = how many selected features recur under resampling. "
-    "`perm_p` is blank where permutation was skipped for a very large naive design (too costly; the "
-    "reduced models carry the signal test)."
+    "**How to read the panel.** `n_inputs` = features the model saw (after filtering/reduction). "
+    "`r2/rmse/mae` = leave-one-bioreactor-out CV (a SANITY check, not a ranking; R2<=0 means no "
+    "better than predict-the-mean). `perm_p` = permutation p (beyond chance?); `signal?` = "
+    "significant. `overfit?` = large train-vs-CV gap. `n_stable` = selected features that recur "
+    "under resampling. `perm_p` is blank where permutation was skipped for a very large naive design."
 )
 ```
 
 ```{python}
 #| echo: false
-panel_table(res["yield"]["systematic"])
+# Step 2: the supervised method matrix (permutation + stability) -- the longest cell
+ysys = systematic_assessment(ctx["ds"], ctx["spec_yield"], n_factors=5, reducers=FLAT,
+                             n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=0)
+panel_table(ysys)
 ```
 
 ```{python}
 #| echo: false
-Markdown("**Which representation to trust** -- resolved by signal + stability + parsimony, never by "
-         "raw score (and it says when options are indistinguishable):")
-for d in res["yield"]["systematic"]["discriminators"]:
+Markdown("**Which representation to trust** -- signal + stability + parsimony, never raw score:")
+for d in ysys["discriminators"]:
     display(Markdown(f"- {d['verdict']}"))
 ```
 
@@ -276,80 +257,75 @@ for d in res["yield"]["systematic"]["discriminators"]:
 #| echo: false
 Markdown("**Cross-method consensus** -- features stable across multiple approaches. Agreement across "
          "independent methods is the robust, trustworthy hypothesis; a long single-method list is not.")
-```
-
-```{python}
-#| echo: false
-res["yield"]["systematic"]["consensus"].head(12)
+display(ysys["consensus"].head(12))
 ```
 
 ## 3.1 DIABLO integration: naive vs reduced
 
 ```{python}
 #| echo: false
-Markdown("This is the core of the block-imbalance argument. **naive** integrates the raw proteomics "
-         "directly; the reduced variants reduce it to modules/factors first. Compare the **selection "
-         "stability**: a list of individual proteins that doesn't recur under resampling is not "
-         "trustworthy, whereas stable modules/factors are -- and expand back to member proteins for biology.")
+Markdown("The core block-imbalance argument. **naive** integrates raw proteomics directly; the "
+         "reduced variants reduce it to modules/factors first. Compare the **selection stability**: "
+         "an individual-protein list that doesn't recur is not trustworthy, whereas stable modules/"
+         "factors are -- and expand back to member proteins for biology. (Runs DIABLO + WGCNA in R.)")
 ```
 
 ```{python}
 #| echo: false
-Markdown(integration_md(res["yield"]["integration"]))
+# Step 3: DIABLO integration, naive vs reduced (R; a few minutes)
+yint = integration_assessment(ctx["ds"], ctx["spec_yield"], reducers=RED, n_factors=5,
+                              stability_bootstrap=stability_bootstrap, seed=0)
+Markdown(integration_md(yint))
 ```
 
 ## 3.2 What each model assumes (and where it diverges, on THIS data)
 
 ```{python}
 #| echo: false
-Markdown(cards_md(res["yield"]["systematic"]))
+Markdown(cards_md(ysys))
 ```
 
 # 4. Construct C1 vs C2 (nominal; which omics separate the engineered constructs)
 
-A second, categorical question on the same data (set `run_construct = True` to enable).
-**Caveat (a declared divergence):** construct C is crossed with fermentation batch F, so a
-C1-vs-C2 separation may partly reflect batch.
+A second, categorical question (set `run_construct = True`). **Caveat (a declared divergence):**
+construct C is crossed with fermentation batch F, so a C1-vs-C2 split may partly reflect batch.
 
 ```{python}
 #| echo: false
-if "construct" in res:
-    display(panel_table(res["construct"]["systematic"]))
-    if "integration" in res["construct"]:
-        display(Markdown(integration_md(res["construct"]["integration"])))
+if run_construct:
+    csys = systematic_assessment(ctx["ds"], ctx["spec_construct"], n_factors=5, reducers=FLAT,
+                                 n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=0)
+    cint = integration_assessment(ctx["ds"], ctx["spec_construct"], reducers=RED, n_factors=5,
+                                  stability_bootstrap=stability_bootstrap, seed=0)
+    display(panel_table(csys)); display(Markdown(integration_md(cint)))
 else:
-    display(Markdown("_Construct (nominal) assessment not run in this render "
-                     "(`run_construct = False`). Enable it for the full two-question report._"))
+    csys = cint = None
+    display(Markdown("_Construct (nominal) assessment not run (`run_construct = False`). "
+                     "Enable it for the full two-question report._"))
 ```
 
 # 5. Interpretation -- what this means
 
 ```{python}
 #| echo: false
-Markdown(conclusion_md(res["yield"]["systematic"], res["yield"].get("integration")))
+Markdown(conclusion_md(setup, ysys, yint))
 ```
 
 ```{python}
 #| echo: false
-Markdown(
-    "**How to use this:** follow up the robust hypothesis features/modules biologically (enrichment, "
-    "literature, targeted validation). Do NOT treat any model here as a deployable predictor -- at "
-    "this sample size the goal is to generate trustworthy hypotheses, not to forecast yield."
-)
+Markdown("**How to use this:** follow up the robust-hypothesis features/modules biologically "
+         "(enrichment, literature, targeted validation). Do NOT treat any model here as a deployable "
+         "predictor -- at this sample size the goal is trustworthy hypotheses, not yield forecasting.")
 ```
 
 # Appendix -- provenance (reproduce without AI)
 
 ```{python}
 #| echo: false
-Markdown("The standard-analysis steps, recorded with parameters and input/output shapes. Combined "
-         "with the declared spec (Section 1) and the fixed seed, this lets anyone reproduce the "
-         "numbers exactly. The ML preprocessing trail is in Section 2.2.")
-```
-
-```{python}
-#| echo: false
-Markdown(res["standard"]["de_provenance"])
+Markdown("The standard-analysis steps, recorded with parameters and input/output shapes. With the "
+         "declared spec (Section 1) and the fixed seed, anyone can reproduce the numbers exactly. "
+         "The ML preprocessing trail is in Section 2.2.")
+display(Markdown(std["de_provenance"]))
 ```
 
 # Try another target
