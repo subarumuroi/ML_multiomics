@@ -26,7 +26,11 @@ for (b in blocks) {
 target_type <- if (!is.null(cfg$target_type)) as.character(cfg$target_type) else "nominal"
 regression <- identical(target_type, "continuous")
 yraw <- read.csv(file.path(d, "y.csv"))$y
-ncomp <- max(2L, as.integer(cfg$ncomp))   # >=2 components so the iconic plots have an axis to draw
+# >=2 components so the iconic plots have an axis to draw, but never more than the
+# smallest block can support (a 2-feature block caps ncomp at 2) or n-1 samples.
+min_feat <- min(vapply(X, ncol, integer(1)))
+ncomp <- max(2L, as.integer(cfg$ncomp))
+ncomp <- max(1L, min(ncomp, min_feat, nrow(X[[blocks[1]]]) - 1L))
 
 K <- length(blocks)
 design <- matrix(as.numeric(cfg$design), K, K); diag(design) <- 0

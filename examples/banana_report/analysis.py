@@ -173,7 +173,7 @@ def native_figures(ctx: dict, integration_res: dict, *, tag: str = "stage",
         keepX = {ly: min(20, df.shape[1]) for ly, df in blocks.items()}
         out["diablo"] = _rel(diablo_plots(
             blocks, yv, target_type=spec.target_type, plotdir=_FIGDIR,
-            prefix=f"{tag}_diablo", keepX=keepX, ncomp=max(2, n_factors), rscript=rscript))
+            prefix=f"{tag}_diablo", keepX=keepX, ncomp=2, rscript=rscript))
         if oversized and ctx["setup"]["n_groups"] >= 15:
             ob = oversized[0]
             Z = FittablePreprocessor(omics_type=ds.blocks[ob].omics_type, impute="metaboanalyst",

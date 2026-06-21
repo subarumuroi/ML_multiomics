@@ -194,7 +194,7 @@ def native_figures(ctx: dict, spec, integration_res: dict, *, tag: str,
         keepX = {ly: min(20, df.shape[1]) for ly, df in blocks.items()}
         out["diablo"] = _rel(diablo_plots(
             blocks, yv, target_type=spec.target_type, plotdir=figdir,
-            prefix=f"{tag}_diablo", keepX=keepX, ncomp=max(2, n_factors), rscript=rscript))
+            prefix=f"{tag}_diablo", keepX=keepX, ncomp=2, rscript=rscript))
         # native WGCNA on the oversized block (its canonical use), trait = the target
         if oversized and ctx["setup"]["n_groups"] >= 15:
             ob = oversized[0]
