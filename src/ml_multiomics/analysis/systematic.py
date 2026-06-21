@@ -404,6 +404,60 @@ def _preprocess_block(df, omics_type, *, for_nmf=False, impute="metaboanalyst",
     return pp.fit_transform(df)
 
 
+def integration_blocks(ds: OmicsDataset, spec: AnalysisSpec, reducer: Optional[str] = None,
+                       *, n_factors: int = 5, min_features: int = 200, ratio: float = 5.0,
+                       seed: int = 0, rscript: str = "Rscript", group_index: int = 0):
+    """Rebuild ONE integration representation's preprocessed blocks (full data).
+
+    Mirrors exactly what ``integration_assessment`` builds per variant, so the
+    blocks here ARE the blocks DIABLO was fit on -- letting a caller (e.g. the
+    report's native-figure step) re-draw mixOmics plots on the same data without
+    re-running the whole assessment.
+
+    ``reducer=None`` -> the naive (raw z-scored) blocks; ``"pca"/"nmf"/"wgcna"``
+    -> the oversized block(s) reduced by that reducer, others z-scored.
+    Returns ``(blocks, y, oversized, membership)``; ``blocks`` is None-safe
+    (raises only on a hard reducer failure -- callers guard).
+    """
+    spec.validate(ds)
+    target = spec.resolve_target(ds)
+    tt = spec.target_type
+    grp = spec.integration_sets()[group_index]
+    raw = {ly: spec.raw_sources.get(ly, ds.get(ly)) for ly in grp}
+    common = list(ds.sample_meta.index)
+    for df in raw.values():
+        common = [s for s in common if s in df.index]
+    common = [s for s in common if s in target.values.dropna().index]
+    raw = {ly: df.loc[common] for ly, df in raw.items()}
+    if tt == "continuous":
+        y = target.values.loc[common].to_numpy(dtype=float)
+    elif tt == "ordinal" and target.ordinal_order:
+        y = target.encoded().loc[common].to_numpy()
+    else:
+        y = target.values.loc[common].to_numpy()
+    yv = pd.Series(y, index=common)
+    oversized = [ly for ly in grp if ds.blocks[ly].shape[1] > min_features and
+                 ds.blocks[ly].shape[1] > ratio * np.median([ds.blocks[o].shape[1] for o in grp if o != ly] or [1])]
+
+    blocks, membership = {}, {}
+    for ly in grp:
+        if reducer and ly in oversized:
+            Z = _preprocess_block(raw[ly], ds.blocks[ly].omics_type, for_nmf=(reducer == "nmf"),
+                                  impute="metaboanalyst", min_obs_frac=spec.min_obs_frac,
+                                  input_state=spec.input_state_for(ly))
+            red = (PCA(n_components=n_factors, random_state=seed) if reducer == "pca"
+                   else NMF(n_components=n_factors, random_state=seed) if reducer == "nmf"
+                   else WGCNA(rscript=rscript))
+            scores, prov = reduce_block(Z, red, top_n=15)
+            blocks[ly] = scores
+            membership[ly] = prov
+        else:
+            blocks[ly] = _preprocess_block(raw[ly], ds.blocks[ly].omics_type,
+                                           impute="metaboanalyst", min_obs_frac=spec.min_obs_frac,
+                                           input_state=spec.input_state_for(ly))
+    return blocks, yv, oversized, membership
+
+
 def integration_assessment(
     ds: OmicsDataset,
     spec: AnalysisSpec,

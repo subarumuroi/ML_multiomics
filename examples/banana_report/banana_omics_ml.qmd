@@ -45,11 +45,33 @@ for cand in (HERE, HERE / "examples" / "banana_report"):
         sys.path.insert(0, str(cand)); break
 import analysis
 import pandas as pd
+import matplotlib.pyplot as plt
 from IPython.display import Markdown, display
+from ml_multiomics.analysis import figures
 
 res = analysis.get_results(n_permutations=n_permutations, stability_bootstrap=stability_bootstrap)
 setup = res["setup"]; std = res["standard"]; pp = res["preprocess"]
 ssys = res["stage"]["systematic"]; sint = res["stage"].get("integration")
+snf = res["stage"].get("native_figures", {})
+
+def show(fig, fallback="_(figure unavailable for this run)_"):
+    """Display a matplotlib Figure from the cached result, or a note if absent."""
+    if fig is None:
+        display(Markdown(fallback)); return
+    display(fig); plt.close(fig)
+
+def embed_native(nf, kind, header):
+    """Embed the native R PNGs (paths relative to this report) or explain their absence."""
+    paths = nf.get(kind) or []
+    if not paths:
+        note = nf.get(f"{kind}_note") or nf.get("note") or \
+            "native R figures not generated (Rscript / mixOmics unavailable at cache-build time)"
+        return Markdown(f"_{note}_")
+    md = [header]
+    for p in paths:
+        label = Path(p).stem.split("_", 1)[-1]
+        md.append(f"![{label}]({p}){{width=90%}}\n")
+    return Markdown("\n\n".join(md))
 
 def panel_table(systematic):
     rows = []
@@ -138,6 +160,20 @@ Markdown(
 )
 ```
 
+```{python}
+#| echo: false
+#| label: fig-blocks
+#| fig-cap: "Block sizes (log scale). The red block dwarfs the others, so it is reduced to factors/modules before integration -- otherwise it dominates DIABLO."
+show(figures.block_sizes(res["block_sizes"], setup["oversized_blocks"]))
+```
+
+```{python}
+#| echo: false
+#| label: fig-pca
+#| fig-cap: "PCA of the oversized block (fit on all samples, for orientation only). Each point is one fruit, coloured by ripening stage; separation along a PC suggests the proteome tracks stage."
+show(figures.pca_scores(ssys["pca_scores"]) if ssys.get("pca_scores") else None)
+```
+
 # 2. Standard analysis (the lab-convention pipeline)
 
 ## 2.1 Quality control
@@ -181,6 +217,14 @@ v = std["de_volcano"]
 v.reindex(v["qvalue"].sort_values().index).head(12)[["contrast", "feature", "log2fc", "pvalue", "qvalue"]]
 ```
 
+```{python}
+#| echo: false
+#| label: fig-volcano
+#| fig-cap: "Volcano plot of a stage contrast: log2 fold change vs -log10 p. Red = significant at FDR<0.05 and |log2fc|>1."
+show(figures.volcano(std["de_volcano"]) if len(std["de_volcano"]) else None,
+     "_no differential-expression results to plot_")
+```
+
 ## 2.4 Enrichment input
 
 ```{python}
@@ -218,6 +262,16 @@ panel_table(ssys)
 
 ```{python}
 #| echo: false
+#| label: fig-perm
+#| fig-cap: "Permutation null for the strongest-signal approach: grey = scores under shuffled stage labels; red = the observed score. Far into the right tail = unlikely by chance. Dashed = the finest p this 9-fruit design can resolve."
+_perm = [r for r in ssys["panel"] if "error" not in r and r.get("permutation", {}).get("null")]
+_best = min(_perm, key=lambda r: r["permutation"].get("p_value", 1.0)) if _perm else None
+show(figures.permutation_hist(_best) if _best else None,
+     "_no permutation null stored for this run_")
+```
+
+```{python}
+#| echo: false
 Markdown("**Which representation to trust** (signal + stability + parsimony, never raw score):")
 for d in ssys["discriminators"]:
     display(Markdown(f"- {d['verdict']}"))
@@ -229,6 +283,22 @@ Markdown("**Cross-method consensus** -- features stable across multiple approach
 display(ssys["consensus"].head(12))
 ```
 
+```{python}
+#| echo: false
+#| label: fig-consensus
+#| fig-cap: "Cross-method consensus: how many independent approaches selected each feature stably. Multi-method agreement is the most trustworthy hypothesis."
+show(figures.consensus_bar(ssys["consensus"]))
+```
+
+```{python}
+#| echo: false
+#| label: fig-tree
+#| fig-cap: "Top feature importances for the winning tree model (best-CV RandomForest/XGBoost). A single-model view; cross-check against the consensus above."
+_btr = figures.best_tree_row(ssys["panel"])
+show(figures.tree_importances(_btr) if _btr else None,
+     "_no tree model with stored importances in this run_")
+```
+
 ## 3.1 DIABLO integration: naive vs reduced
 
 ```{python}
@@ -237,6 +307,29 @@ Markdown("Compare the **selection stability**: a list of individual features tha
          "under resampling is not trustworthy; stable modules/factors are (and expand to member "
          "features for biology).")
 display(Markdown(integration_md(sint)) if sint else Markdown("_(integration not in cache)_"))
+```
+
+```{python}
+#| echo: false
+#| label: fig-naive-reduced
+#| fig-cap: "Selection stability per integration variant: raw 'naive' DIABLO vs reducing the oversized block first. Higher = the selected drivers recur under resampling = more trustworthy."
+show(figures.naive_vs_reduced(sint) if sint else None, "_(integration not in cache)_")
+```
+
+### Native mixOmics DIABLO plots
+
+```{python}
+#| echo: false
+Markdown("The iconic mixOmics views of the **preferred** representation "
+         f"(`{snf.get('reducer','?')}`), fit on all samples for illustration. "
+         "**plotIndiv** = do the blocks place the same fruit consistently; **plotVar / circosPlot** = "
+         "which variables correlate ACROSS blocks; **plotLoadings** = top contributors on component 1. "
+         "(WGCNA figures are omitted: n=9 is below its ~15-20 sample range.)")
+```
+
+```{python}
+#| echo: false
+embed_native(snf, "diablo", "")
 ```
 
 ## 3.2 What each model assumes (and where it diverges, on THIS data)

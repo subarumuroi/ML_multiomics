@@ -35,13 +35,15 @@ from ml_multiomics import OmicsDataset, AnalysisSpec
 from ml_multiomics.core import parse_delimited
 from ml_multiomics.preprocessing import FittablePreprocessor
 from ml_multiomics.analysis import (
-    systematic_assessment, integration_assessment, detect_oversized_blocks,
+    systematic_assessment, integration_assessment, integration_blocks, detect_oversized_blocks,
     qc_summary, differential_expression, gsea_ranked_list,
+    diablo_plots, wgcna_plots,
 )
 from ml_multiomics.validation import permutation_resolution
 
 DATA = Path(__file__).resolve().parents[2] / "data"
 _ORDER = ["Green", "Ripe", "Over"]
+_FIGDIR = Path(__file__).resolve().parent / "_figures"
 
 # (file, omics_type) -- proteomics uses the lab's pre-imputed file in the dataset
 _BLOCKS = {
@@ -141,6 +143,51 @@ def standard_section(ctx: dict) -> dict:
     }
 
 
+def _rel(paths) -> list:
+    """Paths relative to the report dir, forward-slashed, for .qmd embedding."""
+    out = []
+    for p in paths:
+        try:
+            out.append(Path(p).resolve().relative_to(_FIGDIR.parent).as_posix())
+        except ValueError:
+            out.append(Path(p).as_posix())
+    return out
+
+
+def native_figures(ctx: dict, integration_res: dict, *, tag: str = "stage",
+                   n_factors: int = 5, seed: int = 0, rscript: str = "Rscript") -> dict:
+    """Iconic NATIVE mixOmics DIABLO PNGs for the integration, generated ONCE during
+    the cache build on the discriminator's preferred representation. WGCNA figures are
+    skipped at n=9 (< its ~15-20 range), handled by the n_groups guard. Returns paths
+    relative to the report dir (empty + a note if R is unavailable)."""
+    ds, spec = ctx["ds"], ctx["spec"]
+    groups = (integration_res or {}).get("groups") or []
+    if not groups:
+        return {"note": "no integration declared; native figures skipped"}
+    pref = (groups[0].get("discriminator") or {}).get("preferred")
+    reducer = None if pref in (None, "naive") else pref
+    out = {"reducer": pref or "naive", "diablo": [], "wgcna": []}
+    try:
+        blocks, yv, oversized, _ = integration_blocks(
+            ds, spec, reducer=reducer, n_factors=n_factors, seed=seed, rscript=rscript)
+        keepX = {ly: min(20, df.shape[1]) for ly, df in blocks.items()}
+        out["diablo"] = _rel(diablo_plots(
+            blocks, yv, target_type=spec.target_type, plotdir=_FIGDIR,
+            prefix=f"{tag}_diablo", keepX=keepX, ncomp=max(2, n_factors), rscript=rscript))
+        if oversized and ctx["setup"]["n_groups"] >= 15:
+            ob = oversized[0]
+            Z = FittablePreprocessor(omics_type=ds.blocks[ob].omics_type, impute="metaboanalyst",
+                                     min_obs_frac=spec.min_obs_frac).fit_transform(
+                spec.raw_sources.get(ob, ds.get(ob)).loc[list(yv.index)])
+            out["wgcna"] = _rel(wgcna_plots(Z, plotdir=_FIGDIR, prefix=f"{tag}_wgcna",
+                                            y=yv, rscript=rscript))
+        elif oversized:
+            out["wgcna_note"] = f"WGCNA figure skipped (only {ctx['setup']['n_groups']} units < 15)"
+    except Exception as e:
+        out["note"] = f"native figures unavailable: {str(e)[:160]}"
+    return out
+
+
 def run_banana_report(
     *,
     n_permutations: int = 49,
@@ -166,6 +213,8 @@ def run_banana_report(
         out["stage"]["integration"] = integration_assessment(
             ctx["ds"], ctx["spec"], reducers=reducers, n_factors=n_factors,
             stability_bootstrap=stability_bootstrap, seed=seed)
+        out["stage"]["native_figures"] = native_figures(
+            ctx, out["stage"]["integration"], tag="stage", n_factors=n_factors, seed=seed)
     return out
 
 

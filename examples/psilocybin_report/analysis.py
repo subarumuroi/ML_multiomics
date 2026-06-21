@@ -39,10 +39,13 @@ if str(_SRC) not in sys.path:
 from ml_multiomics import OmicsDataset, AnalysisSpec
 from ml_multiomics.preprocessing import FittablePreprocessor
 from ml_multiomics.analysis import (
-    systematic_assessment, integration_assessment, detect_oversized_blocks,
+    systematic_assessment, integration_assessment, integration_blocks, detect_oversized_blocks,
     qc_summary, differential_expression, over_representation, gsea_ranked_list,
+    diablo_plots, wgcna_plots,
 )
 from ml_multiomics.validation import permutation_resolution
+
+_FIGDIR = Path(__file__).resolve().parent / "_figures"
 
 DEFAULT_MASTER = Path("C:/Users/uqkmuroi/gitcode/ml_psi_mofa/data/master_multiomics.csv")
 DEFAULT_YIELDS = Path("C:/Users/uqkmuroi/gitcode/ml_psi_mofa/data/pseudobatched-external-yields-rates.csv")
@@ -160,6 +163,53 @@ def standard_section(ctx: dict) -> dict:
     }
 
 
+def _rel(paths) -> list:
+    """Paths relative to the report dir, forward-slashed, for .qmd embedding."""
+    out = []
+    for p in paths:
+        try:
+            out.append(Path(p).resolve().relative_to(_FIGDIR.parent).as_posix())
+        except ValueError:
+            out.append(Path(p).as_posix())
+    return out
+
+
+def native_figures(ctx: dict, spec, integration_res: dict, *, tag: str,
+                   n_factors: int = 5, seed: int = 0, rscript: str = "Rscript") -> dict:
+    """Generate the iconic NATIVE mixOmics/WGCNA PNGs for one assessment, ONCE,
+    during the cache build. Uses the integration discriminator's preferred
+    representation so the circos/loadings shown ARE the model the report argues for.
+    Returns paths relative to the report dir (empty + a note if R is unavailable)."""
+    ds = ctx["ds"]
+    groups = (integration_res or {}).get("groups") or []
+    if not groups:
+        return {"note": "no integration declared; native DIABLO/WGCNA figures skipped"}
+    pref = (groups[0].get("discriminator") or {}).get("preferred")     # 'naive'|'pca'|'nmf'|'wgcna'
+    reducer = None if pref in (None, "naive") else pref
+    figdir = _FIGDIR
+    out = {"reducer": pref or "naive", "diablo": [], "wgcna": []}
+    try:
+        blocks, yv, oversized, _ = integration_blocks(
+            ds, spec, reducer=reducer, n_factors=n_factors, seed=seed, rscript=rscript)
+        keepX = {ly: min(20, df.shape[1]) for ly, df in blocks.items()}
+        out["diablo"] = _rel(diablo_plots(
+            blocks, yv, target_type=spec.target_type, plotdir=figdir,
+            prefix=f"{tag}_diablo", keepX=keepX, ncomp=max(2, n_factors), rscript=rscript))
+        # native WGCNA on the oversized block (its canonical use), trait = the target
+        if oversized and ctx["setup"]["n_groups"] >= 15:
+            ob = oversized[0]
+            from ml_multiomics.preprocessing import FittablePreprocessor
+            Z = FittablePreprocessor(omics_type=ds.blocks[ob].omics_type, impute="metaboanalyst",
+                                     min_obs_frac=spec.min_obs_frac).fit_transform(ds.get(ob).loc[list(yv.index)])
+            out["wgcna"] = _rel(wgcna_plots(Z, plotdir=figdir, prefix=f"{tag}_wgcna",
+                                            y=yv, rscript=rscript))
+        elif oversized:
+            out["wgcna_note"] = f"WGCNA figure skipped (only {ctx['setup']['n_groups']} units < 15)"
+    except Exception as e:                                              # native figures never break the build
+        out["note"] = f"native figures unavailable: {str(e)[:160]}"
+    return out
+
+
 def run_psilocybin_report(
     compound: str = "psilocybin_ext",
     *,
@@ -193,6 +243,9 @@ def run_psilocybin_report(
         out["yield"]["integration"] = integration_assessment(
             ctx["ds"], ctx["spec_yield"], reducers=reducers, n_factors=n_factors,
             stability_bootstrap=stability_bootstrap, seed=seed)
+        out["yield"]["native_figures"] = native_figures(
+            ctx, ctx["spec_yield"], out["yield"]["integration"], tag="yield",
+            n_factors=n_factors, seed=seed)
     if run_construct:
         out["construct"] = {"spec": ctx["spec_construct"].describe(), "systematic": systematic_assessment(
             ctx["ds"], ctx["spec_construct"], n_factors=n_factors, reducers=flat,
@@ -201,6 +254,9 @@ def run_psilocybin_report(
             out["construct"]["integration"] = integration_assessment(
                 ctx["ds"], ctx["spec_construct"], reducers=reducers, n_factors=n_factors,
                 stability_bootstrap=stability_bootstrap, seed=seed)
+            out["construct"]["native_figures"] = native_figures(
+                ctx, ctx["spec_construct"], out["construct"]["integration"], tag="construct",
+                n_factors=n_factors, seed=seed)
     return out
 
 
