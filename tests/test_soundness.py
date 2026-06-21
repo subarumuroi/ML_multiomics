@@ -227,3 +227,47 @@ def test_standard_de_aggregates_to_units():
     de = differential_expression(X, unit_labels=units, condition_labels=stage, logx=True)
     assert de["n_units"] == 6
     assert set(de["volcano"].columns) >= {"contrast", "feature", "log2fc", "qvalue"}
+
+
+def test_figures_render_from_assessment_result():
+    """Every figure binds to the engine's result keys and returns a Figure (no recompute)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    from matplotlib.figure import Figure
+    from ml_multiomics.analysis import figures
+
+    rng = np.random.RandomState(0)
+    n = 16
+    idx = [f"s{i}" for i in range(n)]
+    grp = [f"u{i // 2}" for i in range(n)]
+    prot = pd.DataFrame(rng.rand(n, 260) + 1, index=idx, columns=[f"P{i}" for i in range(260)])
+    y = 3 * prot["P0"] + rng.rand(n) * 0.3
+    ds = OmicsDataset("fig")
+    ds.add_block("prot", prot, omics_type="proteomics")
+    ds.add_block("met", pd.DataFrame(rng.rand(n, 12) + 1, index=idx, columns=[f"M{i}" for i in range(12)]),
+                 omics_type="metabolomics")
+    ds.set_sample_metadata(pd.DataFrame({"unit": grp, "y": y.values}, index=idx))
+    spec = AnalysisSpec(grouping_column="unit", roles={"prot": "predictor", "met": "predictor"},
+                        target_type="continuous", target_column="y", min_obs_frac=0.5)
+    out = systematic_assessment(ds, spec, reducers=("pca",), n_permutations=9,
+                                stability_bootstrap=4, seed=0)
+
+    # oversized detection feeds the block-size figure
+    assert out["setup"]["oversized_blocks"] == ["prot"]
+    assert isinstance(figures.block_sizes(out["setup"]["block_sizes"],
+                                          out["setup"]["oversized_blocks"]), Figure)
+    # PCA scores scatter (the FIG1 full-data PCA payload)
+    assert out["pca_scores"] is not None
+    assert isinstance(figures.pca_scores(out["pca_scores"]), Figure)
+    # permutation null kept on the panel rows
+    perm_row = next(r for r in out["panel"] if r.get("permutation", {}).get("null"))
+    assert isinstance(figures.permutation_hist(perm_row), Figure)
+    # winning tree model + its importances
+    btr = figures.best_tree_row(out["panel"])
+    assert btr is not None and btr["importances"]
+    assert isinstance(figures.tree_importances(btr), Figure)
+    # cross-method consensus
+    assert isinstance(figures.consensus_bar(out["consensus"]), Figure)
+    # graceful on empty inputs (no crash, returns None)
+    assert figures.stability_bar([]) is None
+    assert figures.naive_vs_reduced({}) is None

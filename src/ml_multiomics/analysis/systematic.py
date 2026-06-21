@@ -306,12 +306,15 @@ def systematic_assessment(
                 continue
             cv_score = cv["r2"] if task == "regression" else cv["balanced_accuracy"]
 
-            # ---- in-sample (for overfit flag) ----
+            # ---- in-sample (for overfit flag) + tree-model importances (for the figure) ----
+            top_imp = None
             try:
                 fp = FoldPipeline(plan, seed=seed); Dall = fp.fit(concat)
                 m_all = factory(); m_all.fit(Dall, y, target_type=spec.target_type)
                 ins = score_predictions(y, m_all.predict(Dall), task)
                 train_score = ins["r2"] if task == "regression" else ins["balanced_accuracy"]
+                if hasattr(m_all, "importances"):        # RandomForest / XGBoost only
+                    top_imp = m_all.importances(top_n=15).to_dict("records")
             except Exception:
                 train_score = cv_score
             of = overfit_flag(train_score, cv_score)
@@ -353,9 +356,10 @@ def systematic_assessment(
                 "cv": {k: v for k, v in cv.items() if k not in ("predictions", "true")},
                 "cv_score": float(cv_score),
                 "overfit": of,
-                "permutation": {k: v for k, v in perm.items() if k != "null"},
+                "permutation": {k: (list(v) if k == "null" else v) for k, v in perm.items()},
                 "stability_top": (stability.head(10).to_dict("records") if stability is not None else None),
                 "n_stable": (int(stability["stable"].sum()) if stability is not None else None),
+                "importances": top_imp,            # tree-model top features (RF/XGB), for the figure
                 "report_card": card,
             })
 
@@ -368,11 +372,26 @@ def systematic_assessment(
     # discriminators: reduce-vs-direct per downstream method (signal + stability + parsimony)
     discriminators = _discriminate(panel)
 
+    # full-data PCA(2) on the oversized block (z-scored) for the scores-scatter figure
+    pca_scores = None
+    ob = oversized[0] if oversized else predictors[0]
+    try:
+        Zob = FittablePreprocessor(omics_type=ds.blocks[ob].omics_type,
+                                   impute="metaboanalyst", min_obs_frac=spec.min_obs_frac).fit_transform(raw[ob])
+        p2 = PCA(n_components=2, random_state=seed).fit(Zob)
+        sc = p2.reduce()
+        pca_scores = {"block": ob, "scores": sc, "target": pd.Series(y, index=list(sc.index)),
+                      "target_type": spec.target_type,
+                      "variance": p2.variance_explained().head(2).to_dict("records")}
+    except Exception:
+        pass
+
     return {
         "setup": setup,
         "panel": panel,
         "consensus": consensus,
         "discriminators": discriminators,
+        "pca_scores": pca_scores,
     }
 
 

@@ -27,6 +27,7 @@ from .standard import (
     qc_summary, aggregate_to_units, differential_expression,
     over_representation, gsea_ranked_list,
 )
+from . import figures
 
 __all__ = [
     "compute_volcano", "anova_tukey", "ora",
@@ -34,4 +35,5 @@ __all__ = [
     "systematic_assessment", "integration_assessment", "FoldPipeline",
     "qc_summary", "aggregate_to_units", "differential_expression",
     "over_representation", "gsea_ranked_list",
+    "figures",
 ]
