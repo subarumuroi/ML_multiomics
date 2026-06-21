@@ -50,12 +50,18 @@ _FIGDIR = Path(__file__).resolve().parent / "_figures"
 DEFAULT_MASTER = Path("C:/Users/uqkmuroi/gitcode/ml_psi_mofa/data/master_multiomics.csv")
 DEFAULT_YIELDS = Path("C:/Users/uqkmuroi/gitcode/ml_psi_mofa/data/pseudobatched-external-yields-rates.csv")
 
-# predictor blocks (met_ext_pb deliberately absent -- targets only, unreliable as features)
+# PREDICTOR blocks = the genuine OMICS layers only. Two layers are deliberately NOT predictors:
+#   * met_ext_pb -- external/pseudobatch metabolites; unreliable as features, they SOURCE the
+#     yield targets only.
+#   * bio (Biomass/OD600) -- process data, not an omics layer; and biomass is the DENOMINATOR of
+#     the yield-over-biomass target, so using it as a predictor is circular (it would "predict" the
+#     target through a normalization artifact, not biology). The package's purpose is interpreting
+#     OMICS, so bio is excluded here; its time-aligned series is preserved (load_bio_timeseries)
+#     ready to use as an easy-to-collect input / timepoint reference in future analyses.
 _BLOCKS = {
     "proteomics": ("prot__", "has_proteomics", "proteomics"),
     "met_ccm": ("met_int_ccm__", "has_metabolomics_int_ccm", "metabolomics"),
     "met_psi": ("met_int_psi__", "has_metabolomics_int_psi", "metabolomics"),
-    "bio": ("bio__", "has_bioreactor", "bioreactor"),
 }
 
 
@@ -89,17 +95,34 @@ def available_compounds(yields_path: Path = DEFAULT_YIELDS) -> list:
     return sorted(pd.read_csv(yields_path)["Compound"].dropna().unique().tolist())
 
 
+def load_bio_timeseries(master_path: Path = DEFAULT_MASTER, phase: int = 3) -> pd.DataFrame:
+    """The bio block (Biomass, OD600) kept as a TIME-ALIGNED series -- NOT a predictor.
+
+    One row per (bioreactor, timepoint), so it can be joined to any omics layer by
+    `(bioreactor, T)` to annotate a sample's growth phase. bio is excluded from the
+    omics-interpretation models (process data, not omics; and circular with the
+    yield-over-biomass target since biomass is the denominator); this preserves the
+    rich time information ready to use as an input in a future analysis.
+    """
+    m = pd.read_csv(master_path, low_memory=False)
+    m = m[(m["Phase"] == phase) & (m["has_bioreactor"] == True)].copy()        # noqa: E712
+    m["bioreactor"] = m["condition"].astype(str) + "_" + m["R"].astype(str)
+    cols = [c for c in m.columns if c.startswith("bio__")]
+    out = m[["bioreactor", "T"] + cols].copy()
+    out.columns = ["bioreactor", "timepoint"] + [c[len("bio__"):] for c in cols]
+    return out.sort_values(["bioreactor", "timepoint"]).reset_index(drop=True)
+
+
 def _yield_spec(ds: OmicsDataset, compound: str, yld: pd.Series) -> AnalysisSpec:
     return AnalysisSpec(
         name=f"yield:{compound}",
         grouping_column="bioreactor",
         grouping_parser="constructed from condition+R (one row per bioreactor)",
-        roles={"proteomics": "predictor", "met_ccm": "predictor",
-               "met_psi": "predictor", "bio": "predictor"},
+        roles={"proteomics": "predictor", "met_ccm": "predictor", "met_psi": "predictor"},
         target_type="continuous",
         target_values=yld,
         target_name=compound,
-        integration_groups=[["proteomics", "met_ccm", "met_psi", "bio"]],
+        integration_groups=[["proteomics", "met_ccm", "met_psi"]],
         min_obs_frac=0.5,
     )
 
@@ -109,12 +132,11 @@ def _construct_spec(ds: OmicsDataset) -> AnalysisSpec:
         name="construct:C1-vs-C2",
         grouping_column="bioreactor",
         grouping_parser="constructed from condition+R (one row per bioreactor)",
-        roles={"proteomics": "predictor", "met_ccm": "predictor",
-               "met_psi": "predictor", "bio": "predictor"},
+        roles={"proteomics": "predictor", "met_ccm": "predictor", "met_psi": "predictor"},
         target_type="nominal",
         target_column="C",
         target_name="construct",
-        integration_groups=[["proteomics", "met_ccm", "met_psi", "bio"]],
+        integration_groups=[["proteomics", "met_ccm", "met_psi"]],
         min_obs_frac=0.5,
     )
 
@@ -132,6 +154,8 @@ def prepare(compound: str = "psilocybin_ext", *, master_path: Path = DEFAULT_MAS
     yld = yld.loc[common]
     groups = ds.sample_meta["bioreactor"].to_numpy()
     yv = yld.to_numpy(dtype=float)
+    bio_ts = load_bio_timeseries(master_path)                  # preserved (time-aligned), not a predictor
+    bio_ts = bio_ts[bio_ts["bioreactor"].isin(common)].reset_index(drop=True)
     setup = {
         "n_groups": int(len(set(groups))),
         "baseline": float(np.sqrt(np.mean((yv - yv.mean()) ** 2))),
@@ -141,7 +165,7 @@ def prepare(compound: str = "psilocybin_ext", *, master_path: Path = DEFAULT_MAS
     }
     return {"ds": ds, "yld": yld, "common": common, "compound": compound,
             "spec_yield": _yield_spec(ds, compound, yld), "spec_construct": _construct_spec(ds),
-            "n_bioreactors": len(common), "setup": setup,
+            "n_bioreactors": len(common), "setup": setup, "bio_timeseries": bio_ts,
             "block_sizes": {b: ds.blocks[b].shape[1] for b in ds.block_names}}
 
 
@@ -233,6 +257,7 @@ def run_psilocybin_report(
     std = standard_section(ctx)
     out = {"compound": compound, "n_bioreactors": ctx["n_bioreactors"],
            "block_sizes": ctx["block_sizes"], "setup": ctx["setup"],
+           "bio_timeseries": ctx["bio_timeseries"],     # excluded from predictors; preserved for future use
            "standard": {k: std[k] for k in ("qc", "de_volcano", "de_n_units", "de_provenance", "gsea_ranked")},
            "preprocess": std["preprocess"]}
     flat = tuple(r for r in reducers if r != "wgcna")          # supervised panel: out-of-fold reducers

@@ -160,9 +160,12 @@ Markdown(
     f"- **Target:** `{compound}` external yield (phase 3).\n"
     f"- **Independent unit:** bioreactor (`F#C#_R#`) -- {setup['n_groups']} units, leave-one-"
     "bioreactor-out so no run leaks across train/test.\n"
-    f"- **Predictor blocks:** " + ", ".join(f"{b} ({n} features)" for b, n in res['block_sizes'].items()) + ".\n"
-    f"- **Excluded:** `met_ext_pb` is NOT a predictor -- external/pseudobatch metabolites are "
-    "unreliable as features; they only *source the yield targets*.\n"
+    f"- **Predictor blocks (genuine omics only):** " + ", ".join(f"{b} ({n} features)" for b, n in res['block_sizes'].items()) + ".\n"
+    f"- **Excluded as predictors:** `met_ext_pb` (external/pseudobatch metabolites -- unreliable as "
+    "features; they only *source the yield targets*) and `bio` (Biomass/OD600 -- process data, not an "
+    "omics layer; and biomass is the *denominator* of yield-over-biomass, so as a predictor it is "
+    "circular). bio is kept as a **time-aligned series** (preserved, not modelled) ready to use as an "
+    "input or growth-phase reference in a future analysis -- the package's job here is to interpret OMICS.\n"
     f"- **Oversized block (auto-reduced before integration):** {setup['oversized_blocks']}.\n"
     f"- **Baseline to beat:** {setup['baseline_kind']} = {setup['baseline']:.3g}.\n"
     f"- **Resolution floor:** the finest permutation p this design can produce is "
@@ -413,6 +416,19 @@ Markdown("The standard-analysis steps, recorded with parameters and input/output
          "declared spec (Section 1) and the fixed seed, anyone can reproduce the numbers exactly. "
          "The ML preprocessing trail is in Section 2.2.")
 display(Markdown(std["de_provenance"]))
+```
+
+# Appendix -- preserved bio time-series (not modelled)
+
+```{python}
+#| echo: false
+Markdown(
+    "`bio` (Biomass, OD600) is **excluded from the predictors** (process data, not omics; circular "
+    "with yield-over-biomass) but its rich time information is **preserved here, aligned by "
+    "timepoint** -- one row per (bioreactor, timepoint). It is ready to join to any omics layer by "
+    "`(bioreactor, timepoint)` to annotate growth phase, or to use as an easy-to-collect input in a "
+    "future analysis. First rows:")
+display(res["bio_timeseries"].head(8))
 ```
 
 # Try another target
