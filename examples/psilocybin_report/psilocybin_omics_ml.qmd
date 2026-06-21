@@ -31,11 +31,11 @@ divergence point**, the **ML assessment** (judged by *is there signal?*, *does i
 #| tags: [parameters]
 compound = "psilocybin_ext"
 # Must match the cached run (see `python analysis.py --help`). Raise n_permutations to
-# 199-999 for a publication-grade p-value (deterministic at a fixed seed). run_construct
-# adds the secondary C1-vs-C2 question.
+# 199-999 for a publication-grade p-value (deterministic at a fixed seed). run_condition_c
+# adds the secondary C1-vs-C2 condition question.
 n_permutations = 49
 stability_bootstrap = 10
-run_construct = False
+run_condition_c = False
 ```
 
 ```{python}
@@ -55,7 +55,7 @@ from ml_multiomics.analysis import figures
 
 # loads the cache (instant); computes + caches once if absent
 res = analysis.get_results(compound, n_permutations=n_permutations,
-                           stability_bootstrap=stability_bootstrap, run_construct=run_construct)
+                           stability_bootstrap=stability_bootstrap, run_condition_c=run_condition_c)
 setup = res["setup"]; std = res["standard"]; pp = res["preprocess"]
 ysys = res["yield"]["systematic"]; yint = res["yield"].get("integration")
 ynf = res["yield"].get("native_figures", {})
@@ -428,16 +428,17 @@ embed_native(ynf, "wgcna", "")
 Markdown(cards_md(ysys))
 ```
 
-# 4. Construct C1 vs C2 (nominal; which omics separate the engineered constructs)
+# 4. Condition C: C1 vs C2 (nominal; which omics separate the two C-factor conditions)
 
-A second, categorical question (set `run_construct = True` and rebuild the cache). **Caveat (a
-declared divergence):** construct C is crossed with fermentation batch F, so a C1-vs-C2 split may
-partly reflect batch.
+A second, categorical question (set `run_condition_c = True` and rebuild the cache). **`C1`/`C2` are
+experimental conditions** -- the `C` factor of the design, alongside fermentation batch `F`
+(`condition = F###_C#`); they are not a genetic construct. **C is balanced across all four F
+batches**, so the C1-vs-C2 contrast is clean: batch adds between-run variance, not bias.
 
 ```{python}
 #| echo: false
-if "construct" in res:
-    cst = res["construct"]
+if "condition_c" in res:
+    cst = res["condition_c"]
     if "standard" in cst:
         display(Markdown(f"**Standard precursor (matched to this categorical question):** differential "
                          f"expression across C1 vs C2, aggregated to {cst['standard']['de_n_units']} units "
@@ -449,7 +450,7 @@ if "construct" in res:
     if "integration" in cst:
         display(Markdown(integration_md(cst["integration"])))
 else:
-    display(Markdown("_Construct (nominal) assessment not in this cache (`run_construct = False`). "
+    display(Markdown("_Condition-C (nominal) assessment not in this cache (`run_condition_c = False`). "
                      "Enable it for the full two-question report (it ships with its own matched DE precursor)._"))
 ```
 

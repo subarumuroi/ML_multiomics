@@ -12,13 +12,16 @@ Pipeline (see the .qmd):
   2. ML divergence: two assessments via systematic_assessment + integration_assessment
        (a) continuous YIELD (regression; the headline) -- which omics/modules track
            metabolite yield; DIABLO integrates the blocks (regression block.spls);
-       (b) CONSTRUCT C1 vs C2 (nominal) -- which omics separate the engineered
-           constructs (F batch is a crossed confound, flagged as a divergence).
+       (b) CONDITION C1 vs C2 (nominal) -- which omics separate the two levels of
+           condition factor C. C1/C2 are experimental CONDITIONS (alongside the
+           fermentation batch F), NOT a genetic construct. C is balanced across all
+           four F batches, so the C1-vs-C2 contrast is clean (F adds variance, not bias).
 
 Data: ml_psi_mofa/data/master_multiomics.csv (RAW, multi-block) + the external
-yields file. Predictor blocks = proteomics + intracellular metabolomics (CCM, PSI)
-+ bioreactor; `met_ext_pb` is EXCLUDED as a predictor (unreliable as features) and
-only sources the yield targets. Proteomics (~4375, ~76% missing) is auto-reduced.
+yields file. Predictor blocks = proteomics + intracellular metabolomics (CCM, PSI);
+`met_ext_pb` and `bio` are EXCLUDED as predictors (met_ext_pb sources the yield
+targets; bio = Biomass/OD600 is process data and circular with yield-over-biomass).
+Proteomics (~4375, ~76% missing) is auto-reduced.
 
 Compute is configurable (n_permutations / stability_bootstrap / reducers /
 run_integration). Defaults aim for soundness; lower them for a quick render.
@@ -129,15 +132,15 @@ def _yield_spec(ds: OmicsDataset, compound: str, yld: pd.Series) -> AnalysisSpec
     )
 
 
-def _construct_spec(ds: OmicsDataset) -> AnalysisSpec:
+def _condition_c_spec(ds: OmicsDataset) -> AnalysisSpec:
     return AnalysisSpec(
-        name="construct:C1-vs-C2",
+        name="conditionC:C1-vs-C2",
         grouping_column="bioreactor",
         grouping_parser="constructed from condition+R (one row per bioreactor)",
         roles={"proteomics": "predictor", "met_ccm": "predictor", "met_psi": "predictor"},
         target_type="nominal",
         target_column="C",
-        target_name="construct",
+        target_name="condition_C",
         integration_groups=[["proteomics", "met_ccm", "met_psi"]],
         min_obs_frac=0.5,
     )
@@ -166,7 +169,7 @@ def prepare(compound: str = "psilocybin_ext", *, master_path: Path = DEFAULT_MAS
         "oversized_blocks": detect_oversized_blocks(ds),
     }
     return {"ds": ds, "yld": yld, "common": common, "compound": compound,
-            "spec_yield": _yield_spec(ds, compound, yld), "spec_construct": _construct_spec(ds),
+            "spec_yield": _yield_spec(ds, compound, yld), "spec_condition_c": _condition_c_spec(ds),
             "n_bioreactors": len(common), "setup": setup, "bio_timeseries": bio_ts,
             "block_sizes": {b: ds.blocks[b].shape[1] for b in ds.block_names}}
 
@@ -208,9 +211,9 @@ def standard_section(ctx: dict) -> dict:
     }
 
 
-def construct_de(ctx: dict) -> dict:
-    """Standard DE for the CONSTRUCT (C1 vs C2) categorical question -- only built when the
-    construct assessment is run. Kept so each ML question has its matching standard precursor."""
+def condition_c_de(ctx: dict) -> dict:
+    """Standard DE for the CONDITION C (C1 vs C2) categorical question -- only built when the
+    condition-C assessment is run. Kept so each ML question has its matching standard precursor."""
     ds, common = ctx["ds"], ctx["common"]
     de = differential_expression(ds.get("proteomics"), unit_labels=common,
                                  condition_labels=ds.sample_meta["C"].to_numpy(), logx=True)
@@ -274,7 +277,7 @@ def run_psilocybin_report(
     stability_bootstrap: int = 20,
     reducers=("pca", "nmf", "wgcna"),
     run_integration: bool = True,
-    run_construct: bool = True,
+    run_condition_c: bool = True,
     n_factors: int = 5,
     seed: int = 0,
 ) -> dict:
@@ -307,17 +310,17 @@ def run_psilocybin_report(
         out["yield"]["native_figures"] = native_figures(
             ctx, ctx["spec_yield"], out["yield"]["integration"], tag="yield",
             n_factors=n_factors, seed=seed)
-    if run_construct:
-        out["construct"] = {"spec": ctx["spec_construct"].describe(), "standard": construct_de(ctx),
-                            "systematic": systematic_assessment(
-            ctx["ds"], ctx["spec_construct"], n_factors=n_factors, reducers=flat,
+    if run_condition_c:
+        out["condition_c"] = {"spec": ctx["spec_condition_c"].describe(), "standard": condition_c_de(ctx),
+                              "systematic": systematic_assessment(
+            ctx["ds"], ctx["spec_condition_c"], n_factors=n_factors, reducers=flat,
             n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=seed)}
         if run_integration:
-            out["construct"]["integration"] = integration_assessment(
-                ctx["ds"], ctx["spec_construct"], reducers=reducers, n_factors=n_factors,
+            out["condition_c"]["integration"] = integration_assessment(
+                ctx["ds"], ctx["spec_condition_c"], reducers=reducers, n_factors=n_factors,
                 stability_bootstrap=stability_bootstrap, seed=seed)
-            out["construct"]["native_figures"] = native_figures(
-                ctx, ctx["spec_construct"], out["construct"]["integration"], tag="construct",
+            out["condition_c"]["native_figures"] = native_figures(
+                ctx, ctx["spec_condition_c"], out["condition_c"]["integration"], tag="condition_c",
                 n_factors=n_factors, seed=seed)
     return out
 
@@ -327,13 +330,13 @@ import pickle
 _CACHE_DIR = Path(__file__).resolve().parent / "_cache"
 
 
-def _cache_path(compound, n_permutations, stability_bootstrap, run_construct) -> Path:
+def _cache_path(compound, n_permutations, stability_bootstrap, run_condition_c) -> Path:
     _CACHE_DIR.mkdir(exist_ok=True)
-    return _CACHE_DIR / f"results_{compound}_p{n_permutations}_b{stability_bootstrap}_c{int(run_construct)}.pkl"
+    return _CACHE_DIR / f"results_{compound}_p{n_permutations}_b{stability_bootstrap}_c{int(run_condition_c)}.pkl"
 
 
 def get_results(compound: str = "psilocybin_ext", *, n_permutations: int = 49,
-                stability_bootstrap: int = 10, run_construct: bool = False,
+                stability_bootstrap: int = 10, run_condition_c: bool = False,
                 refresh: bool = False, **kw) -> dict:
     """Load cached results if present (instant), else compute once and cache.
 
@@ -341,13 +344,13 @@ def get_results(compound: str = "psilocybin_ext", *, n_permutations: int = 49,
     first render); every subsequent render loads the pickle and is instant -- so a report
     is never 'stuck' rendering. Delete _cache/ or pass refresh=True to recompute.
     """
-    path = _cache_path(compound, n_permutations, stability_bootstrap, run_construct)
+    path = _cache_path(compound, n_permutations, stability_bootstrap, run_condition_c)
     if path.exists() and not refresh:
         with open(path, "rb") as f:
             return pickle.load(f)
     res = run_psilocybin_report(compound, n_permutations=n_permutations,
                                 stability_bootstrap=stability_bootstrap,
-                                run_construct=run_construct, **kw)
+                                run_condition_c=run_condition_c, **kw)
     with open(path, "wb") as f:
         pickle.dump(res, f)
     return res
@@ -360,13 +363,14 @@ if __name__ == "__main__":
     ap.add_argument("--compound", default="psilocybin_ext")
     ap.add_argument("--n-permutations", type=int, default=49)
     ap.add_argument("--stability-bootstrap", type=int, default=10)
-    ap.add_argument("--construct", action="store_true", help="also run the C1-vs-C2 assessment")
+    ap.add_argument("--condition-c", action="store_true",
+                    help="also run the condition C1-vs-C2 assessment")
     a = ap.parse_args()
     print(f"computing {a.compound} (n_perm={a.n_permutations}, boot={a.stability_bootstrap}, "
-          f"construct={a.construct}) ...", flush=True)
+          f"condition_c={a.condition_c}) ...", flush=True)
     t = time.perf_counter()
     res = get_results(a.compound, n_permutations=a.n_permutations,
-                      stability_bootstrap=a.stability_bootstrap, run_construct=a.construct, refresh=True)
+                      stability_bootstrap=a.stability_bootstrap, run_condition_c=a.condition_c, refresh=True)
     print(f"done in {time.perf_counter()-t:.0f}s; cached at "
-          f"{_cache_path(a.compound, a.n_permutations, a.stability_bootstrap, a.construct)}")
+          f"{_cache_path(a.compound, a.n_permutations, a.stability_bootstrap, a.condition_c)}")
     print(f"  bioreactors={res['n_bioreactors']} yield panel rows={len(res['yield']['systematic']['panel'])}")
