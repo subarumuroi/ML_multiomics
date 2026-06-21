@@ -434,6 +434,14 @@ def integration_assessment(
         oversized = [ly for ly in grp if ds.blocks[ly].shape[1] > min_features and
                      ds.blocks[ly].shape[1] > ratio * np.median([ds.blocks[o].shape[1] for o in grp if o != ly] or [1])]
 
+        # WGCNA needs n >= ~15-20; below that it can stall/degenerate, so skip it as a
+        # reducer here (recorded) rather than risk a long R call on too-small data.
+        n_units = len(set(groups.tolist()))
+        grp_reducers = list(reducers)
+        wgcna_skipped = ("wgcna" in grp_reducers) and (n_units < 15)
+        if wgcna_skipped:
+            grp_reducers = [r for r in grp_reducers if r != "wgcna"]
+
         variants = {}
 
         # ---- naive: raw (z-scored) blocks ----
@@ -443,7 +451,7 @@ def integration_assessment(
         variants["naive"] = {"blocks": blocks_naive, "membership": None, "reducer": None}
 
         # ---- reduced: one variant per reducer (a failing reducer is recorded, not fatal) ----
-        for r in reducers:
+        for r in grp_reducers:
             try:
                 balanced, membership = {}, {}
                 for ly in grp:
@@ -510,6 +518,7 @@ def integration_assessment(
         results.append({
             "group": grp, "oversized": oversized, "target_type": tt,
             "variants": variant_out, "discriminator": verdict,
+            "wgcna_skipped_small_n": wgcna_skipped,
             "diablo_card": DIABLO().report_card({
                 "target_type": tt, "n_groups": int(len(set(groups.tolist()))),
                 "block_sizes": {ly: ds.blocks[ly].shape[1] for ly in grp},

@@ -43,7 +43,7 @@ class DIABLO(BaseMethod):
 
     def __init__(self, n_components: int = 2, keepX=None, design: float = 0.1,
                  keepY=None, impute: str = "metaboanalyst", rscript: str = "Rscript",
-                 timeout: int = 600):
+                 timeout: int = 300):
         super().__init__(impute=impute)
         self.n_components = n_components
         self.keepX = keepX          # dict {block: int|list} or None (full)

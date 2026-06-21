@@ -42,7 +42,7 @@ class WGCNA(BaseMethod):
     def __init__(self, power=None, network_type: str = "unsigned",
                  min_module_size: int = 20, merge_cut_height: float = 0.25,
                  impute: str = "metaboanalyst", rscript: str = "Rscript",
-                 timeout: int = 600):
+                 timeout: int = 300):
         super().__init__(impute=impute)
         self.power = power
         self.network_type = network_type
