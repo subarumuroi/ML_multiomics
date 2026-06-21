@@ -24,10 +24,14 @@ provenance log.
   and sample order differs across files; positional alignment would silently
   mis-pair samples.
 - **Metadata parsing is pluggable and dataset-specific**, not universal. For
-  bioreactor data the `F#C#R#T#` convention is parsed as: `F#C#` *jointly* = the
-  condition (the `C` field nominally means "condition" but is unreliable on its
-  own), `R#` = replicate, `T#` = timepoint; the independent unit for grouping is
-  the bioreactor `F#C#R#`. Other datasets supply their own metadata or parser.
+  bioreactor data the `F#C#R#T#` convention is parsed into the four raw factors
+  `F`, `C`, `R`, `T` (plus the composites `condition` = `F_C` and `bioreactor` =
+  `F_C_R`). `F` (fermentation batch) and `C` (e.g. C1/C2) are both **condition
+  factors** — neither is a genetic "construct" — `R#` = replicate, `T#` =
+  timepoint. The helper imposes no roles: the **user declares**, via the
+  `AnalysisSpec`, which factor is the grouping unit (usually `bioreactor`
+  `F#C#R#`), a target, a covariate, or excluded — keeping the design flexible.
+  Other datasets supply their own metadata or parser.
 - **Target spec** supports four types — `nominal`, `ordinal`, `continuous`,
   `none` — and method applicability is gated by target type. The target may be a
   metadata column or derived from a separate measurement table.

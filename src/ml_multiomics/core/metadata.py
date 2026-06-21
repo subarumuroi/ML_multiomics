@@ -7,11 +7,17 @@ a metadata table directly.
 
 Bioreactor convention (psilocybin / fermentation data ONLY):
     F#C#R#T#  e.g.  27-PSI_F503_C1_R1_T1  or  F503_C1_R1
-      * F#C# JOINTLY = condition   (C nominally = "condition" but is unreliable
-        alone, so the real condition label is the F#C# combination)
+      * F# and C# are both experimental CONDITION factors (F = fermentation batch,
+        C = the C-factor condition, e.g. C1/C2). NEITHER is a genetic "construct";
+        the helper imposes no biological meaning -- it just parses the structure.
       * R# = replicate number
       * T# = timepoint number
-      * independent unit for grouping = bioreactor = F#C#R#
+      * usual independent unit for grouping = bioreactor = F#C#R#
+
+The helper stays deliberately FLEXIBLE/OPEN: it returns the raw factors (F, C, R, T)
+plus two common composites (condition = F_C, bioreactor = F_C_R), and the USER decides
+via the AnalysisSpec which factor is the grouping unit / a target / a covariate /
+excluded. It never assigns roles itself.
 """
 
 from __future__ import annotations
@@ -30,27 +36,28 @@ _BIOREACTOR_RE = re.compile(
 
 
 def parse_bioreactor_ids(sample_ids: Iterable[str]) -> pd.DataFrame:
-    """Parse F#C#R#T# bioreactor sample IDs into a metadata table.
+    """Parse F#C#R#T# bioreactor sample IDs into a flexible factor table.
 
     Returns a DataFrame indexed by the original sample_id with columns:
-        strain      (F#)
-        construct   (C#)
-        condition   (F#_C#)              -- the real condition label
-        replicate   (R#)
-        timepoint   (T#, may be NaN)
-        bioreactor  (F#_C#_R#)           -- the independent unit for grouping
+        F           (F#)   -- fermentation batch     (a condition factor)
+        C           (C#)   -- C-factor condition     (a condition factor; NOT a construct)
+        R           (R#)   -- replicate
+        T           (T#, may be NaN) -- timepoint
+        condition   (F#_C#)   -- convenience composite of the two condition factors
+        bioreactor  (F#_C#_R#) -- convenience composite; the usual independent unit
 
-    Rows whose ID does not match the pattern get NaN fields (logged by caller).
+    The four raw factors are exposed so the caller can compose ANY grouping/role
+    (e.g. group by F#C#R#, contrast C, treat F as a covariate, aggregate over T) via
+    the AnalysisSpec -- the helper assigns no roles and imposes no biology. Rows whose
+    ID does not match the pattern get NaN fields (logged by caller).
     """
     records = {}
     for sid in sample_ids:
         s = str(sid)
         m = _BIOREACTOR_RE.search(s)
         if not m:
-            records[s] = {
-                "strain": np.nan, "construct": np.nan, "condition": np.nan,
-                "replicate": np.nan, "timepoint": np.nan, "bioreactor": np.nan,
-            }
+            records[s] = {"F": np.nan, "C": np.nan, "R": np.nan, "T": np.nan,
+                          "condition": np.nan, "bioreactor": np.nan}
             continue
         f = m.group("F").upper()
         c = m.group("C").upper()
@@ -58,11 +65,8 @@ def parse_bioreactor_ids(sample_ids: Iterable[str]) -> pd.DataFrame:
         t = m.group("T")
         t = t.upper() if t else np.nan
         records[s] = {
-            "strain": f,
-            "construct": c,
+            "F": f, "C": c, "R": r, "T": t,
             "condition": f"{f}_{c}",
-            "replicate": r,
-            "timepoint": t,
             "bioreactor": f"{f}_{c}_{r}",
         }
     df = pd.DataFrame.from_dict(records, orient="index")

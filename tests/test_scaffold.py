@@ -152,8 +152,8 @@ def test_psilo_grouping_and_resolution():
     ds.set_sample_metadata(meta)
 
     check(meta["condition"].notna().all(), "all sample IDs parsed to a condition (F#C#)")
-    check((meta["condition"] == meta["strain"] + "_" + meta["construct"]).all(),
-          "condition == strain_construct (F#C#)")
+    check((meta["condition"] == meta["F"] + "_" + meta["C"]).all(),
+          "condition == F_C (the two condition factors)")
     n_react = meta["bioreactor"].nunique()
     print(f"  bioreactors: {n_react}, samples: {len(meta)}")
 
