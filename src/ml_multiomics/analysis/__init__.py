@@ -27,7 +27,7 @@ from .systematic import (
 )
 from .standard import (
     qc_summary, aggregate_to_units, differential_expression,
-    over_representation, gsea_ranked_list,
+    over_representation, gsea_ranked_list, univariate_association, standard_to_ml_bridge,
 )
 from . import figures
 from .native_plots import diablo_plots, wgcna_plots
@@ -37,6 +37,6 @@ __all__ = [
     "detect_oversized_blocks", "reduce_block", "balance_blocks",
     "systematic_assessment", "integration_assessment", "integration_blocks", "FoldPipeline",
     "qc_summary", "aggregate_to_units", "differential_expression",
-    "over_representation", "gsea_ranked_list",
+    "over_representation", "gsea_ranked_list", "univariate_association", "standard_to_ml_bridge",
     "figures", "diablo_plots", "wgcna_plots",
 ]

@@ -51,6 +51,28 @@ def volcano(volcano_df: pd.DataFrame, *, contrast: Optional[str] = None,
     fig.tight_layout(); return fig
 
 
+def association_volcano(assoc: pd.DataFrame, *, fdr: float = 0.1, top_n_label: int = 8) -> Optional[plt.Figure]:
+    """Continuous-target analog of the volcano: per-feature correlation (rho) vs -log10 p.
+
+    Each point is a feature from the univariate yield screen; red = passes FDR. This is the
+    standard single-feature view that the multivariate ML then builds on.
+    """
+    if assoc is None or len(assoc) == 0:
+        return None
+    v = assoc.dropna(subset=["rho", "pvalue"]).copy()
+    v["nlogp"] = -np.log10(v["pvalue"].clip(lower=1e-300))
+    sig = v["qvalue"] < fdr
+    fig, ax = _fig()
+    ax.scatter(v.loc[~sig, "rho"], v.loc[~sig, "nlogp"], s=8, c=_GREY, alpha=0.5, linewidths=0)
+    ax.scatter(v.loc[sig, "rho"], v.loc[sig, "nlogp"], s=14, c=_RED, alpha=0.85, linewidths=0)
+    for _, r in v[sig].sort_values("nlogp", ascending=False).head(top_n_label).iterrows():
+        ax.annotate(str(r["feature"])[:16], (r["rho"], r["nlogp"]), fontsize=6, alpha=0.8)
+    ax.axvline(0, color="0.6", lw=0.6)
+    ax.set_xlabel("correlation with target (rho)"); ax.set_ylabel("-log10 p"); ax.set_xlim(-1.05, 1.05)
+    ax.set_title(f"Univariate feature-target association ({int(sig.sum())} pass FDR<{fdr})")
+    fig.tight_layout(); return fig
+
+
 def pca_scores(pca: dict) -> plt.Figure:
     """PC1 vs PC2 of the (oversized) block, coloured by target."""
     sc = pca["scores"]; y = pca["target"]

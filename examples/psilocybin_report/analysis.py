@@ -40,9 +40,11 @@ from ml_multiomics import OmicsDataset, AnalysisSpec
 from ml_multiomics.preprocessing import FittablePreprocessor
 from ml_multiomics.analysis import (
     systematic_assessment, integration_assessment, integration_blocks, detect_oversized_blocks,
-    qc_summary, differential_expression, over_representation, gsea_ranked_list,
+    qc_summary, differential_expression, gsea_ranked_list,
+    univariate_association, standard_to_ml_bridge,
     diablo_plots, wgcna_plots,
 )
+from ml_multiomics.core.provenance import ProvenanceTrail
 from ml_multiomics.validation import permutation_resolution
 
 _FIGDIR = Path(__file__).resolve().parent / "_figures"
@@ -169,22 +171,51 @@ def prepare(compound: str = "psilocybin_ext", *, master_path: Path = DEFAULT_MAS
             "block_sizes": {b: ds.blocks[b].shape[1] for b in ds.block_names}}
 
 
+_PREDICTORS = ("proteomics", "met_ccm", "met_psi")
+
+
 def standard_section(ctx: dict) -> dict:
-    """Standard analysis (QC + DE + preprocessing demo + GSEA-ranked). Fast; runs before ML."""
-    ds, common = ctx["ds"], ctx["common"]
+    """Standard analysis ALIGNED TO THE YIELD QUESTION (so it flows into the ML, not past it):
+    QC + preprocessing demo + a per-feature UNIVARIATE yield-association screen (Spearman rho + BH
+    FDR -- the conventional single-feature precursor to multivariate ML) + GSEA-ranked. Fast."""
+    ds, common, yld = ctx["ds"], ctx["common"], ctx["yld"]
     prot_raw = ds.get("proteomics")
-    construct = ds.sample_meta["C"].to_numpy()
-    de = differential_expression(prot_raw, unit_labels=common, condition_labels=construct, logx=True)
+    prov = ProvenanceTrail(name="standard-univariate-yield")
+    parts = []
+    for blk in _PREDICTORS:
+        raw = ds.get(blk).loc[common]
+        a = univariate_association(raw, yld, min_obs_frac=0.5, method="spearman")
+        prov.record("univariate_association",
+                    {"block": blk, "method": "spearman", "min_obs_frac": 0.5,
+                     "n_features_in": int(raw.shape[1]), "n_tested": int(len(a))},
+                    in_obj=raw, note="Spearman rho vs yield + BH FDR (per block)")
+        a.insert(0, "block", blk)
+        a["feature"] = blk + "__" + a["feature"].astype(str)        # qualify -> matches ML consensus
+        parts.append(a)
+    assoc = pd.concat(parts, ignore_index=True).sort_values("qvalue", na_position="last")
+    # GSEA-ranked from the PROTEOMICS association (gene sets are protein-level), signed by rho
+    prot = assoc[assoc["block"] == "proteomics"].dropna(subset=["pvalue"]).copy()
+    gsea = (np.sign(prot["rho"]) * -np.log10(prot["pvalue"].clip(lower=1e-300)))
+    gsea.index = prot["feature"].str.replace("proteomics__", "", regex=False)
     pp = FittablePreprocessor(omics_type="proteomics", impute="metaboanalyst", min_obs_frac=0.5).fit(prot_raw)
     return {
         "qc": qc_summary(ds)["per_block"],
-        "de_volcano": de["volcano"], "de_n_units": de["n_units"],
-        "de_provenance": de["provenance"].to_markdown(),
-        "gsea_ranked": (gsea_ranked_list(de["volcano"], de["volcano"]["contrast"].iloc[0]).head(50)
-                        if len(de["volcano"]) else pd.Series(dtype=float)),
+        "assoc": assoc, "assoc_n_units": int(len(common)), "assoc_method": "spearman",
+        "assoc_provenance": prov.to_markdown(),
+        "gsea_ranked": gsea.sort_values(ascending=False).head(50),
         "preprocess": {"provenance": pp.provenance.to_markdown(), "n_in": int(prot_raw.shape[1]),
                        "n_kept": int(len(pp.keep_cols_)), "min_obs_frac": 0.5, "impute": "metaboanalyst"},
     }
+
+
+def construct_de(ctx: dict) -> dict:
+    """Standard DE for the CONSTRUCT (C1 vs C2) categorical question -- only built when the
+    construct assessment is run. Kept so each ML question has its matching standard precursor."""
+    ds, common = ctx["ds"], ctx["common"]
+    de = differential_expression(ds.get("proteomics"), unit_labels=common,
+                                 condition_labels=ds.sample_meta["C"].to_numpy(), logx=True)
+    return {"de_volcano": de["volcano"], "de_n_units": de["n_units"],
+            "de_provenance": de["provenance"].to_markdown()}
 
 
 def _rel(paths) -> list:
@@ -258,12 +289,17 @@ def run_psilocybin_report(
     out = {"compound": compound, "n_bioreactors": ctx["n_bioreactors"],
            "block_sizes": ctx["block_sizes"], "setup": ctx["setup"],
            "bio_timeseries": ctx["bio_timeseries"],     # excluded from predictors; preserved for future use
-           "standard": {k: std[k] for k in ("qc", "de_volcano", "de_n_units", "de_provenance", "gsea_ranked")},
+           "standard": {k: std[k] for k in
+                        ("qc", "assoc", "assoc_n_units", "assoc_method", "assoc_provenance", "gsea_ranked")},
            "preprocess": std["preprocess"]}
     flat = tuple(r for r in reducers if r != "wgcna")          # supervised panel: out-of-fold reducers
     out["yield"] = {"spec": ctx["spec_yield"].describe(), "systematic": systematic_assessment(
         ctx["ds"], ctx["spec_yield"], n_factors=n_factors, reducers=flat,
         n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=seed)}
+    # the standard->ML through-line: do the univariate yield hits and the multivariate ML
+    # consensus agree? what does ML add / drop? (qualified feature names match across both)
+    out["yield"]["bridge"] = standard_to_ml_bridge(
+        std["assoc"], out["yield"]["systematic"]["consensus"], q_cutoff=0.1, ml_min_approaches=2)
     if run_integration:
         out["yield"]["integration"] = integration_assessment(
             ctx["ds"], ctx["spec_yield"], reducers=reducers, n_factors=n_factors,
@@ -272,7 +308,8 @@ def run_psilocybin_report(
             ctx, ctx["spec_yield"], out["yield"]["integration"], tag="yield",
             n_factors=n_factors, seed=seed)
     if run_construct:
-        out["construct"] = {"spec": ctx["spec_construct"].describe(), "systematic": systematic_assessment(
+        out["construct"] = {"spec": ctx["spec_construct"].describe(), "standard": construct_de(ctx),
+                            "systematic": systematic_assessment(
             ctx["ds"], ctx["spec_construct"], n_factors=n_factors, reducers=flat,
             n_permutations=n_permutations, stability_bootstrap=stability_bootstrap, seed=seed)}
         if run_integration:

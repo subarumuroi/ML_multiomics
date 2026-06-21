@@ -22,6 +22,10 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from scipy import stats
+from scipy.stats import rankdata
+from statsmodels.stats.multitest import multipletests
+
 from ..core.dataset import OmicsDataset
 from ..core.provenance import ProvenanceTrail
 from ..preprocessing.pipeline import Preprocessor
@@ -104,3 +108,101 @@ def gsea_ranked_list(volcano: pd.DataFrame, contrast: str, by: str = "signed_log
         rank = (np.sign(v["log2fc"]) * -np.log10(v["pvalue"].clip(lower=1e-300)))
         rank.index = v["feature"]
     return rank.sort_values(ascending=False)
+
+
+# --- continuous-target standard analysis + the standard -> ML bridge ----------
+# For a continuous outcome (e.g. yield) the standard single-feature step is not a
+# two-group volcano but a per-feature CORRELATION screen. This is the conventional
+# univariate precursor to multivariate ML, and lets the report cross-reference the
+# univariate hits against the ML consensus -- the integrated through-line.
+
+def univariate_association(
+    X_raw: pd.DataFrame,
+    y,
+    *,
+    unit_labels=None,
+    method: str = "spearman",
+    min_obs_frac: float = 0.5,
+    fdr_method: str = "BH",
+) -> pd.DataFrame:
+    """Standard UNIVARIATE screen for a CONTINUOUS target: per-feature correlation + BH FDR.
+
+    The single-feature precursor to multivariate ML -- "which features individually track the
+    outcome". Spearman (rank) by default: robust at small n and invariant to the log transform,
+    so it needs no scale choice. Detection-filters features (>= min_obs_frac observed), then
+    median-fills the small residual so ranks are defined. Aggregates to one row per unit first
+    if unit_labels is given (no pseudoreplication).
+
+    Returns a table [feature, rho, pvalue, qvalue, n] sorted by qvalue.
+    """
+    X = X_raw.copy()
+    if unit_labels is not None:
+        X = aggregate_to_units(X, unit_labels)
+    yv = pd.Series(np.asarray(y, dtype=float), index=X.index) if not hasattr(y, "reindex") \
+        else y.reindex(X.index).astype(float)
+    ok = yv.notna()
+    X, yv = X.loc[ok], yv.loc[ok]
+    keep = X.notna().mean(axis=0) >= min_obs_frac
+    X = X.loc[:, keep]
+    if X.shape[1] == 0:
+        return pd.DataFrame(columns=["feature", "rho", "pvalue", "qvalue", "n"])
+    X = X.fillna(X.median(axis=0)).fillna(0.0)
+    n = int(X.shape[0])
+    M = X.to_numpy(dtype=float)
+    yarr = yv.to_numpy(dtype=float)
+    if method == "spearman":
+        M = np.apply_along_axis(rankdata, 0, M)
+        yarr = rankdata(yarr)
+    Mc = M - M.mean(axis=0)
+    yc = yarr - yarr.mean()
+    denom = np.sqrt((Mc ** 2).sum(axis=0) * (yc ** 2).sum())
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rho = np.where(denom == 0, np.nan, (Mc * yc[:, None]).sum(axis=0) / denom)
+        t = rho * np.sqrt((n - 2) / np.clip(1 - rho ** 2, 1e-12, None))
+    p = 2 * stats.t.sf(np.abs(t), df=max(n - 2, 1))
+    p = np.where(np.isnan(rho), np.nan, p)
+    out = pd.DataFrame({"feature": X.columns, "rho": rho, "pvalue": p, "n": n})
+    m = out["pvalue"].notna()
+    out["qvalue"] = np.nan
+    if m.any() and fdr_method.upper() != "NONE":
+        out.loc[m, "qvalue"] = multipletests(out.loc[m, "pvalue"].to_numpy(), method="fdr_bh")[1]
+    return out.sort_values("qvalue", na_position="last").reset_index(drop=True)
+
+
+def standard_to_ml_bridge(
+    univariate: pd.DataFrame,
+    consensus: pd.DataFrame,
+    *,
+    q_cutoff: float = 0.1,
+    ml_min_approaches: int = 2,
+    top_n: int = 25,
+) -> dict:
+    """Cross-reference the univariate standard screen against the multivariate ML consensus.
+
+    The integrated through-line: where the single-feature screen and the multivariate/stable
+    ML selection AGREE (robust), where univariate flags a feature ML did NOT retain (a marginal
+    single-feature signal that does not survive multivariate + stability), and where ML surfaces
+    a feature with NO univariate signal (only visible jointly with others).
+
+    Both inputs use QUALIFIED feature names (e.g. 'proteomics__P123') so they are comparable.
+    `univariate` needs columns [feature, qvalue]; `consensus` needs [feature, n_approaches_stable].
+    """
+    uni = univariate.dropna(subset=["qvalue"])
+    uni_hits = set(uni.loc[uni["qvalue"] < q_cutoff, "feature"])
+    if not uni_hits:                                   # nothing clears FDR -> fall back to the strongest
+        uni_hits = set(uni.head(top_n)["feature"])
+    if consensus is None or len(consensus) == 0:
+        ml_hits = set()
+    else:
+        ml_hits = set(consensus.loc[consensus["n_approaches_stable"] >= ml_min_approaches, "feature"])
+        if not ml_hits:
+            ml_hits = set(consensus.head(top_n)["feature"])
+    both = sorted(uni_hits & ml_hits)
+    uni_only = sorted(uni_hits - ml_hits)
+    ml_only = sorted(ml_hits - uni_hits)
+    return {
+        "agreed": both, "univariate_only": uni_only, "ml_only": ml_only,
+        "n_univariate": len(uni_hits), "n_ml": len(ml_hits),
+        "n_agreed": len(both), "n_univariate_only": len(uni_only), "n_ml_only": len(ml_only),
+        "q_cutoff": q_cutoff, "ml_min_approaches": ml_min_approaches,
+    }

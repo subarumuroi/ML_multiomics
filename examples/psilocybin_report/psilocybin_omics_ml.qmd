@@ -59,6 +59,27 @@ res = analysis.get_results(compound, n_permutations=n_permutations,
 setup = res["setup"]; std = res["standard"]; pp = res["preprocess"]
 ysys = res["yield"]["systematic"]; yint = res["yield"].get("integration")
 ynf = res["yield"].get("native_figures", {})
+assoc = std["assoc"]; bridge = res["yield"].get("bridge", {})
+
+def _short(feats, k=8):
+    fs = [str(f).split("__", 1)[-1] for f in feats[:k]]
+    extra = f" (+{len(feats)-k} more)" if len(feats) > k else ""
+    return (", ".join(f"`{f}`" for f in fs) + extra) if fs else "_none_"
+
+def bridge_md(b):
+    if not b:
+        return "_(bridge not in cache)_"
+    return (
+        f"The univariate screen flagged **{b['n_univariate']}** features; the multivariate ML "
+        f"consensus retained **{b['n_ml']}** (selected stably by >= {b['ml_min_approaches']} approaches). "
+        "Reading the three groups:\n\n"
+        f"- **Agree -- {b['n_agreed']}** (single-feature signal that also survives multivariate + "
+        f"stability; the most trustworthy): {_short(b['agreed'])}\n"
+        f"- **Univariate only -- {b['n_univariate_only']}** (correlate with yield alone but are NOT "
+        f"stably selected jointly -- likely marginal / redundant): {_short(b['univariate_only'])}\n"
+        f"- **ML only -- {b['n_ml_only']}** (little individual correlation, surfaced only in the "
+        f"multivariate/integrated model -- what ML *adds* over the standard screen): {_short(b['ml_only'])}"
+    )
 
 def show(fig, fallback="_(figure unavailable for this run)_"):
     """Display a matplotlib Figure from the cached result, or a note if absent."""
@@ -215,38 +236,39 @@ Markdown(
 Markdown(pp["provenance"])
 ```
 
-## 2.3 Differential expression
+## 2.3 Univariate feature-yield association (the standard single-feature screen)
 
 ```{python}
 #| echo: false
 Markdown(
-    f"Pairwise DE across the construct contrast, **aggregated to {std['de_n_units']} independent "
-    "units first** (averaging repeated timepoints so we don't pseudoreplicate). Welch t on log "
-    "abundances + BH FDR, matching the lab convention (verified ~1e-15 vs the reference R). Columns: "
-    "`foldchange` (linear), `log2fc`, raw `pvalue`, FDR `qvalue`. Top features by q-value:"
+    f"The standard single-feature step for a CONTINUOUS outcome is not a two-group volcano but a "
+    f"per-feature **correlation with yield**: Spearman rho (rank-based -- robust at "
+    f"{std['assoc_n_units']} units and invariant to the log transform) + BH FDR **per block**. This "
+    "is the conventional precursor to the multivariate ML below, and is reported on the SAME target "
+    "so the two connect. Top features by q-value (across all predictor blocks):"
 )
 ```
 
 ```{python}
 #| echo: false
-v = std["de_volcano"]
-v.reindex(v["qvalue"].sort_values().index).head(12)[["contrast", "feature", "log2fc", "pvalue", "qvalue"]]
+assoc.head(12)[["block", "feature", "rho", "pvalue", "qvalue"]].assign(
+    feature=lambda d: d["feature"].str.split("__").str[-1]).round(4)
 ```
 
 ```{python}
 #| echo: false
-#| label: fig-volcano
-#| fig-cap: "Volcano plot of the construct contrast: log2 fold change vs -log10 p. Red = significant at FDR<0.05 and |log2fc|>1; the most significant features are labelled."
-show(figures.volcano(std["de_volcano"]) if len(std["de_volcano"]) else None,
-     "_no differential-expression results to plot_")
+#| label: fig-assoc
+#| fig-cap: "Univariate yield-association 'volcano': each feature's correlation with yield (rho) vs -log10 p. Red = passes FDR. This single-feature view is what the multivariate ML then builds on."
+show(figures.association_volcano(assoc) if len(assoc) else None,
+     "_no association results to plot_")
 ```
 
 ## 2.4 Enrichment input
 
 ```{python}
 #| echo: false
-Markdown("A ranked feature list (signed -log10 p) for the R clusterProfiler/fgsea GSEA path "
-         "(GSEA is intentionally not reimplemented in pure Python).")
+Markdown("A ranked proteomics feature list (signed -log10 p, sign from the yield correlation) for "
+         "the R clusterProfiler/fgsea GSEA path (GSEA is intentionally not reimplemented in pure Python).")
 ```
 
 ```{python}
@@ -256,11 +278,14 @@ std["gsea_ranked"].head(10).round(3).to_frame("rank_stat")
 
 # === ML divergence point ===
 
-Everything above is the standard descriptive pipeline. In the ML below, three things change
-deliberately: preprocessing (and any reduction) is **refit inside each fold** on training rows
-only; the oversized proteomics block is **reduced** (PCA / NMF / WGCNA) before integration; and
-**cross-validation is reported only as a binary overfitting flag**, never a score — signal comes
-from permutation, trust from stability.
+Everything above is the standard descriptive pipeline, on the **same target** the ML predicts —
+the univariate screen asks *which single features correlate with yield*. The ML below answers the
+harder question — *which coordinated, multi-block signature predicts yield and recurs* — and three
+things change deliberately: preprocessing (and any reduction) is **refit inside each fold** on
+training rows only; the oversized proteomics block is **reduced** (PCA / NMF / WGCNA) before
+integration; and **cross-validation is reported only as a binary overfitting flag**, never a score —
+signal comes from permutation, trust from stability. Section 3.0 then closes the loop by comparing
+the two against each other.
 
 # 3. Yield assessment (regression -- the headline)
 
@@ -318,6 +343,32 @@ show(figures.consensus_bar(ysys["consensus"]))
 _btr = figures.best_tree_row(ysys["panel"])
 show(figures.tree_importances(_btr) if _btr else None,
      "_no tree model with stored importances in this run_")
+```
+
+## 3.0 Standard -> ML synthesis (the integrated through-line)
+
+```{python}
+#| echo: false
+Markdown(
+    "This is where the standard analysis and the ML **connect** -- the point of running them as one "
+    "workflow. We cross-reference the **univariate yield screen** (Section 2.3) against the "
+    "**multivariate ML consensus** (above), on the same target and the same feature names:")
+```
+
+```{python}
+#| echo: false
+display(Markdown(bridge_md(bridge)))
+```
+
+```{python}
+#| echo: false
+Markdown(
+    "**Why this matters.** *Agree* is the robust core -- a single-feature correlation that also "
+    "holds up jointly and under resampling. *Univariate only* is the cautionary set the standard "
+    "analysis alone would have over-trusted: features that correlate marginally but don't survive "
+    "multivariate selection. *ML only* is the value the integrated workflow adds -- signal visible "
+    "only when features are modelled together across blocks. The standard analysis is not discarded "
+    "at the divergence point; it is carried through and reconciled.")
 ```
 
 ## 3.1 DIABLO integration: naive vs reduced
@@ -386,12 +437,20 @@ partly reflect batch.
 ```{python}
 #| echo: false
 if "construct" in res:
-    display(panel_table(res["construct"]["systematic"]))
-    if "integration" in res["construct"]:
-        display(Markdown(integration_md(res["construct"]["integration"])))
+    cst = res["construct"]
+    if "standard" in cst:
+        display(Markdown(f"**Standard precursor (matched to this categorical question):** differential "
+                         f"expression across C1 vs C2, aggregated to {cst['standard']['de_n_units']} units "
+                         "(Welch t on log + BH; verified ~1e-15 vs reference R). Top hits:"))
+        dv = cst["standard"]["de_volcano"]
+        display(dv.reindex(dv["qvalue"].sort_values().index).head(8)[["feature", "log2fc", "pvalue", "qvalue"]])
+    display(Markdown("**Multivariate ML:**"))
+    display(panel_table(cst["systematic"]))
+    if "integration" in cst:
+        display(Markdown(integration_md(cst["integration"])))
 else:
     display(Markdown("_Construct (nominal) assessment not in this cache (`run_construct = False`). "
-                     "Enable it for the full two-question report._"))
+                     "Enable it for the full two-question report (it ships with its own matched DE precursor)._"))
 ```
 
 # 5. Interpretation -- what this means
@@ -415,7 +474,7 @@ Markdown("**How to use this:** follow up the robust-hypothesis features/modules 
 Markdown("The standard-analysis steps, recorded with parameters and input/output shapes. With the "
          "declared spec (Section 1) and the fixed seed, anyone can reproduce the numbers exactly. "
          "The ML preprocessing trail is in Section 2.2.")
-display(Markdown(std["de_provenance"]))
+display(Markdown(std["assoc_provenance"]))
 ```
 
 # Appendix -- preserved bio time-series (not modelled)

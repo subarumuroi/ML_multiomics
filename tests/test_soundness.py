@@ -229,6 +229,27 @@ def test_standard_de_aggregates_to_units():
     assert set(de["volcano"].columns) >= {"contrast", "feature", "log2fc", "qvalue"}
 
 
+def test_univariate_association_and_bridge():
+    """The continuous-target standard screen finds planted associations, and the standard->ML
+    bridge classifies agree / univariate-only / ML-only correctly."""
+    from ml_multiomics.analysis import univariate_association, standard_to_ml_bridge
+    rng = np.random.RandomState(1)
+    n = 28
+    idx = [f"u{i}" for i in range(n)]
+    X = pd.DataFrame(rng.rand(n, 60) + 1, index=idx, columns=[f"P{i}" for i in range(60)])
+    y = pd.Series(4 * X["P0"] + 2 * X["P1"] + rng.rand(n) * 0.3, index=idx)   # P0, P1 truly associated
+    a = univariate_association(X, y, min_obs_frac=0.5, method="spearman")
+    assert set(a.columns) >= {"feature", "rho", "pvalue", "qvalue", "n"}
+    assert {"P0", "P1"} <= set(a.head(5)["feature"])               # planted signal ranks at the top
+    # qualify and bridge against a consensus that shares P0 but not P1
+    a["feature"] = "blk__" + a["feature"].astype(str)
+    cons = pd.DataFrame({"feature": ["blk__P0", "blk__P40"], "n_approaches_stable": [3, 2]})
+    b = standard_to_ml_bridge(a, cons, q_cutoff=0.1, ml_min_approaches=2)
+    assert "blk__P0" in b["agreed"]                                 # univariate AND ML
+    assert "blk__P40" in b["ml_only"]                               # ML, no univariate signal
+    assert b["n_agreed"] + b["n_univariate_only"] == b["n_univariate"]
+
+
 def test_figures_render_from_assessment_result():
     """Every figure binds to the engine's result keys and returns a Figure (no recompute)."""
     import matplotlib
