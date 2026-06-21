@@ -17,6 +17,12 @@ from .resampling import (
     permutation_resolution,
     grouped_permutation_test,
     grouped_bootstrap_indices,
+    score_predictions,
+    leakage_free_cv_predict,
+    leakage_free_cv,
+    permutation_significance,
+    bootstrap_stability,
+    overfit_flag,
 )
 
 __all__ = [
@@ -25,4 +31,10 @@ __all__ = [
     "permutation_resolution",
     "grouped_permutation_test",
     "grouped_bootstrap_indices",
+    "score_predictions",
+    "leakage_free_cv_predict",
+    "leakage_free_cv",
+    "permutation_significance",
+    "bootstrap_stability",
+    "overfit_flag",
 ]

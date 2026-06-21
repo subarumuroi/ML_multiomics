@@ -1,5 +1,7 @@
 #!/usr/bin/env Rscript
-# R bridge for DIABLO — calls mixOmics::block.splsda (the reference implementation).
+# R bridge for DIABLO -- the reference mixOmics implementation.
+#   * classification (nominal/ordinal target) -> block.splsda
+#   * regression     (continuous target)       -> block.spls   (mode="regression")
 # Reads a work dir containing config.json, block_<name>.csv (samples x features,
 # row names = sample IDs), and y.csv; writes per-block variates, loadings,
 # selected features, and (optionally) leave-one-out CV error from mixOmics perf().
@@ -18,7 +20,9 @@ for (b in blocks) {
   X[[b]] <- as.matrix(read.csv(file.path(d, paste0("block_", b, ".csv")),
                                row.names = 1, check.names = FALSE))
 }
-Y <- factor(read.csv(file.path(d, "y.csv"))$y)
+target_type <- if (!is.null(cfg$target_type)) as.character(cfg$target_type) else "nominal"
+regression <- identical(target_type, "continuous")
+yraw <- read.csv(file.path(d, "y.csv"))$y
 ncomp <- as.integer(cfg$ncomp)
 
 K <- length(blocks)
@@ -33,7 +37,18 @@ for (b in blocks) {
   kx[[b]] <- as.integer(v)
 }
 
-model <- block.splsda(X, Y, ncomp = ncomp, keepX = kx, design = design, scale = FALSE)
+if (regression) {
+  Y <- matrix(as.numeric(yraw), ncol = 1)          # univariate continuous response
+  colnames(Y) <- "y"
+  rownames(Y) <- rownames(X[[blocks[1]]])          # mixOmics matches rownames across X and Y
+  keepY <- if (!is.null(cfg$keepY)) as.integer(cfg$keepY) else ncol(Y)
+  ky <- rep(keepY, ncomp)
+  model <- block.spls(X, Y = Y, ncomp = ncomp, keepX = kx, keepY = ky,
+                      design = design, mode = "regression", scale = FALSE)
+} else {
+  Y <- factor(yraw)
+  model <- block.splsda(X, Y, ncomp = ncomp, keepX = kx, design = design, scale = FALSE)
+}
 
 for (b in blocks) {
   write.csv(model$variates[[b]], file.path(d, paste0("variates_", b, ".csv")), row.names = FALSE)
@@ -48,7 +63,16 @@ if (isTRUE(cfg$cv)) {
   pf <- tryCatch(perf(model, validation = "loo"),
                  error = function(e) { cat("perf error:", conditionMessage(e), "\n"); NULL })
   if (!is.null(pf)) {
-    write_json(pf$error.rate, file.path(d, "cv_error.json"), auto_unbox = TRUE, digits = 8)
+    # classification -> $error.rate; regression (block.spls) -> $measures (MSEP/R2/Q2)
+    payload <- if (!is.null(pf$error.rate)) pf$error.rate
+               else if (!is.null(pf$measures)) pf$measures
+               else list(note = "perf ran; no standard field for this model")
+    tryCatch(
+      write_json(payload, file.path(d, "cv_error.json"),
+                 auto_unbox = TRUE, digits = 8, force = TRUE),
+      error = function(e) writeLines(
+        jsonlite::toJSON(list(note = paste("perf serialise error:", conditionMessage(e))),
+                         auto_unbox = TRUE), file.path(d, "cv_error.json")))
   }
 }
 

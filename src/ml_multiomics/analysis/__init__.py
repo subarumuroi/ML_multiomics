@@ -21,5 +21,22 @@ this port, otherwise treats every sample as independent.
 
 from .differential import compute_volcano, anova_tukey
 from .enrichment import ora
+from .integration import detect_oversized_blocks, reduce_block, balance_blocks
+from .systematic import (
+    systematic_assessment, integration_assessment, integration_blocks, FoldPipeline,
+)
+from .standard import (
+    qc_summary, aggregate_to_units, differential_expression,
+    over_representation, gsea_ranked_list, univariate_association, standard_to_ml_bridge,
+)
+from . import figures
+from .native_plots import diablo_plots, wgcna_plots
 
-__all__ = ["compute_volcano", "anova_tukey", "ora"]
+__all__ = [
+    "compute_volcano", "anova_tukey", "ora",
+    "detect_oversized_blocks", "reduce_block", "balance_blocks",
+    "systematic_assessment", "integration_assessment", "integration_blocks", "FoldPipeline",
+    "qc_summary", "aggregate_to_units", "differential_expression",
+    "over_representation", "gsea_ranked_list", "univariate_association", "standard_to_ml_bridge",
+    "figures", "diablo_plots", "wgcna_plots",
+]

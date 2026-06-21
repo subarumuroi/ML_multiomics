@@ -4,112 +4,133 @@ description: >-
   Run a multi-omics ML analysis with the ml_multiomics package for a user who is
   NOT a computational expert. Use when someone has one or more omics tables
   (proteomics / metabolomics / volatiles, as CSV or Excel) and wants to explore
-  structure, find important features, or predict an outcome (a category, an
-  ordered category, or a number like yield) — especially the low-sample
-  high-feature (low-n, high-p) case. Guides the user through the few decisions
-  that matter, runs the right model with leakage-free validation, and explains
-  the results in plain language.
+  structure, find important features, or relate omics to an outcome (a category,
+  an ordered category, or a number like yield) — especially the low-sample
+  high-feature (low-n, high-p) case. Helps the user DECLARE the few decisions that
+  matter (an AnalysisSpec), runs the whole method matrix leakage-free, and explains
+  the results — signal, stability, and the stable features/modules — in plain language.
 ---
 
 # Multi-omics analysis playbook
 
-You are guiding someone who may not know machine learning. Do the technical work
-for them, explain choices in plain language, and never let them fall into the
-two traps that ruin omics ML: **data leakage from the wrong grouping** and
-**double-scaling / wrong missing-value handling**. The library
-(`ml_multiomics`) enforces the right defaults; your job is to wire it up for
-their data and interpret the output.
+You are guiding someone who may not know machine learning. The library
+(`ml_multiomics`) holds the LOGIC and enforces soundness; the user owns the
+DECISIONS. Your job: help them author an `AnalysisSpec` (what each layer is for,
+what the independent unit is, what to predict), run the engine, and interpret the
+output. **The user decides which layers matter and how to use them; the package
+never guesses or auto-combines layers.**
 
-Full rationale: `docs/ASSUMPTIONS_AND_CHOICES.md`. Decision details with code:
-`docs/USER_GUIDE.md`. This skill is the operating procedure.
+What the engine guarantees so you don't have to: per-fold preprocessing (no
+leakage), method-aware handling, permutation + stability as the real inferences
+(CV is only an overfit flag), and a provenance trail of everything done. It will
+never crown a "best predictor" — small-n scores are noise.
 
-## Before you start
-- Confirm the package is importable: `from ml_multiomics import OmicsDataset`.
-  If not, `pip install -e .` in the repo (Python 3.12, MSYS2 bash).
-- Optional extras only if needed: `pip install ml_multiomics[ordinal]` (ordinal
-  regression), `[shap]` (SHAP importance).
+Full rationale: `docs/ASSUMPTIONS_AND_CHOICES.md`. API details: `docs/USER_GUIDE.md`.
+Worked specs: `examples/psilocybin_report/analysis.py`, `examples/banana_report/analysis.py`.
 
 ## Step 1 — Understand the data (ask, don't assume)
-Ask the user, in plain terms:
-1. **What are the rows and columns of each file?** You need samples × features,
-   with a sample-ID column. One file per omics layer.
-2. **What is one independent biological unit?** (e.g. "each fermenter run", "each
-   fruit"). This is the single most important question — see Step 4.
-3. **What do they want to learn?** One of:
-   - explore / find structure (no outcome) → unsupervised
-   - predict a category, ordered category, or a number → supervised
-4. **Are there missing values?** (blanks in the tables.)
+1. **Rows and columns of each file?** samples × features with a sample-ID column; one file per omics layer.
+2. **What is ONE independent biological unit?** (each fermenter run, each fruit). This drives leave-one-out and prevents fake results. It must become an explicit metadata column — the engine never parses sample IDs.
+3. **What is each layer FOR?** predictor / target / covariate / exclude. (e.g. an unreliable external-metabolite block → `exclude`.)
+4. **What do they want to relate the omics to?** a category (nominal), an ordered category (ordinal), or a number (continuous) — or just explore.
+5. **Has anything already been done to a file?** (already log-transformed / normalized / imputed). If so we either skip that step or revert to a raw file — see Step 4.
 
 ## Step 2 — Load into the container
 ```python
-import pandas as pd, numpy as np
+import pandas as pd
 from ml_multiomics import OmicsDataset
-df = pd.read_csv(PATH).set_index(SAMPLE_ID_COL)   # or pd.read_excel
 ds = OmicsDataset(name=STUDY)
-ds.add_block(LAYER_NAME, df, omics_type="proteomics")  # or metabolomics/volatiles
-# repeat add_block per layer; then ds.align() if multiple layers
+for layer, path, otype in LAYERS:
+    ds.add_block(layer, pd.read_csv(path).set_index(SAMPLE_ID_COL), omics_type=otype)
+ds.align()   # intersect to common samples by ID
 ```
-Attach metadata with a parser (`parse_bioreactor_ids` for `F#C#R#T#`,
-`parse_delimited` for `Green-1`) or build a small DataFrame indexed by sample ID.
 
-## Step 3 — Preprocess (let the defaults work)
+## Step 3 — Build the grouping column (REQUIRED; the engine won't parse IDs)
+Turn the "independent unit" answer into an explicit column in `ds.sample_meta`.
+Helpers exist to populate it from IDs (you run them; the engine consumes the column):
 ```python
-from ml_multiomics import Preprocessor
-Preprocessor().run(ds)   # missing-aware log + z-score, lab-matched, scaled ONCE
+from ml_multiomics.core import parse_bioreactor_ids, parse_delimited
+meta = parse_bioreactor_ids(ds.common_samples())     # F#C#R#T#  -> adds 'bioreactor'
+# or parse_delimited(ds.common_samples(), sep="-", names=("stage","replicate"))
+meta["unit"] = meta.index                            # if each sample is its own unit
+ds.set_sample_metadata(meta)
 ```
-Exception: if you will run **NMF**, it needs non-negative input — preprocess with
-`Preprocessor(profile=Profile(transform="log2", normalize="none")).run(ds)`.
 
-## Step 4 — Set the grouping (prevents fake results)
-Translate the user's "independent unit" answer into a `groups` vector. Every
-validation call uses it so no unit splits across train/test.
-- repeated measures per unit (timepoints in a reactor): `groups = ds.groups("bioreactor")`
-- each sample independent (separate fruit): `groups = np.arange(n_samples)`
-Tell the user, plainly, why: "samples from the same X aren't independent;
-keeping them together stops the model from cheating."
-
-## Step 5 — Pick the method (use the recipe)
-Map their goal to a method (see USER_GUIDE "Workflow recipes"):
-- **low-n high-p + predict** → reduce then predict: `PCA`/`NMF`/`WGCNA` → `RandomForest`/`Lasso`
-- **multi-omics, what separates groups?** → `DIABLO`
-- **ordered category** → `Ordinal`
-- **a number (yield)** → `Lasso`/`ElasticNet` or `RandomForest` (regression)
-- **just explore** → `PCA`/`NMF`/`WGCNA` (inspect factors/modules/loadings)
-- **classic DE / enrichment** → `analysis.compute_volcano`, `anova_tukey`, `ora`
-  (run on RAW abundances, not the z-scored matrix)
-Set `target_type` to `nominal` / `ordinal` / `continuous` / `none` accordingly.
-
-Worked examples to follow:
-- categorical outcome: `examples/skill_walkthrough.py` (banana ripening stage)
-- continuous yield + a rendered report: `examples/psilocybin_report/`
-  (predict psilocybin/tryptamine yield from proteomics; reduce→predict;
-  parameterized Quarto "Part 3" report)
-
-## Step 6 — Run with leakage-free validation
+## Step 4 — DECLARE the analysis (the AnalysisSpec)
+This is where the user's decisions are recorded. Validation rejects anything ambiguous.
 ```python
-from ml_multiomics import RandomForest
-X, y = ds.get(LAYER), ds.sample_meta[TARGET_COL].to_numpy()
-m = RandomForest().fit(X, y, target_type="nominal")
-cv = m.cross_validate(X, y, groups=groups, target_type="nominal")
-imp = m.importances(top_n=20)
-pt  = m.permutation_test(X, y, groups=groups, n_permutations=200)
+from ml_multiomics import AnalysisSpec
+spec = AnalysisSpec(
+    grouping_column="bioreactor",              # the independent unit (required)
+    roles={"proteomics": "predictor", "metab": "predictor", "ext": "exclude"},
+    target_type="continuous",                   # nominal | ordinal | continuous
+    target_column="yield",                      # OR target_values=<Series>; ordinal needs ordinal_order=[...]
+    integration_groups=[["proteomics", "metab"]],  # which layers DIABLO integrates (opt-in; omit = none)
+    min_obs_frac=0.5,                            # detection filter for correlation/latent methods
+    # upstream-state handling (Step 1 q5):
+    input_states={"proteomics": {"imputed": True}},     # flag what was already done, OR
+    raw_sources={"proteomics": raw_unimputed_df},        # REVERT to a raw file for ML
+)
+spec.validate(ds)
+print(spec.describe())   # read the declared decisions back to the user
 ```
-Reduce→predict variant: `red = WGCNA().fit(X,y).reduce(); RandomForest().fit(red, y, ...)`.
 
-## Step 7 — Explain the results honestly
-Report to the user in plain language:
-- **Effect size first**: the grouped-CV accuracy / R², not a p-value.
-- **The p-value WITH its limit**: `pt["resolution"]["finest_two_sided_p"]` — if
-  the design can't go below e.g. 0.1, say so ("with this few groups, that's the
-  best the test can show").
-- **Top features** (importances / VIP / coefficients), with their real names.
-- **Caveats**: small n means exploratory; cross-reference methods; don't
-  over-claim.
+## Step 5 — Run the systematic assessment
+```python
+from ml_multiomics.analysis import systematic_assessment, integration_assessment
+sysres = systematic_assessment(ds, spec, n_permutations=99, stability_bootstrap=20)
+integ  = integration_assessment(ds, spec, stability_bootstrap=20)   # DIABLO naive vs reduced
+```
+Raise `n_permutations` for finer p-value resolution; both are slower. (For the lab's
+F#C#R#T# data, proteomics is auto-reduced before integration — nothing to set.)
+
+## Step 6 — Read the results to the user (in plain language)
+- **Is there signal?** Per approach, the permutation p-value read **against the
+  resolution floor** (`...["permutation"]`): if the design can't reach 0.05, say so.
+- **Does it recur?** Stability (`n_stable`, `consensus`): features stable across
+  many approaches are the trustworthy hypothesis; a long unstable list is not.
+- **Which approach to trust?** The `discriminators` — they prefer signal + stability
+  + parsimony, and say when options are indistinguishable. Read the verdict verbatim.
+- **Integration:** the naive-vs-reduced table + verdict — typically the naive
+  individual-feature list is unstable and the reduced modules/factors recur; prefer
+  the reduced, then expand a module to its member features for biology.
+- **Per model:** its `report_card` — what it is, its assumptions, and its
+  **divergences on THIS data** (e.g. "ordinal treated as nominal", "block imbalance").
+- **CV is a sanity flag only** (`overfit`), never a ranking.
+
+## Step 7 — Standard analysis (optional, for parity / DE / enrichment)
+```python
+from ml_multiomics.analysis import differential_expression, over_representation, gsea_ranked_list
+de = differential_expression(X_raw, unit_labels=units, condition_labels=groups)  # aggregates to units
+```
+Run on RAW abundances; GSEA uses the external R path via `gsea_ranked_list`.
 
 ## Guardrails (do not violate)
-- Always pass `groups=` to CV/permutation. Never ungrouped CV on repeated measures.
-- Never impute before MOFA (it models missingness); never feed z-scored data to NMF.
-- Don't add a second scaler — preprocessing already scaled once.
-- No deep learning at n < ~30. Prefer the methods above.
-- If the user asks "is it significant?", answer with effect size + resolution,
-  not a bare p-value.
+- The grouping column is **required and explicit** — never let the engine guess the unit.
+- The **user decides** layer roles; never auto-combine layers or invent a target.
+- **Never present an alternative without a discriminator** — if nothing separates two
+  options, say so and prefer the simpler/more interpretable one.
+- Report signal (permutation vs floor) + stability, **never a bare CV leaderboard**.
+- If a file was already transformed/normalized/imputed, declare it (`input_states`)
+  or revert to raw (`raw_sources`) — do not double-process.
+- Everything is provenance-tracked; if the user is unsure, show them the trail and
+  let them revise the spec.
+
+## Robustness & reproducibility (what the engine handles for you)
+- **Deterministic.** Same `seed` -> identical panel, p-values, stability, consensus.
+  Always pass a fixed `seed` so a report re-renders to the same numbers; raise
+  `n_permutations` (49 -> 199-999) only to refine the p-value resolution.
+- **Graceful degradation.** A method/reducer that fails on a given dataset (e.g. a
+  degenerate fold, or a target a method can't take) is recorded as an `error` row and
+  the rest of the assessment proceeds -- one failure never aborts the report. Check for
+  `error` keys and tell the user which approaches were skipped and why.
+- **Leakage-free by construction.** All preprocessing AND any reduction are refit
+  inside each CV/permutation/bootstrap fold on training rows only; you don't manage this.
+- **R methods are bounded.** DIABLO/WGCNA shell out to R with a timeout (default 600s)
+  so a hang can't block forever. **WGCNA needs n >= ~15-20** -- omit it as a reducer for
+  tiny datasets (e.g. banana n=9); the engine will otherwise record its failure.
+- **Cost knobs.** Permutation is skipped (with a recorded note) for very large naive
+  designs (`max_perm_features`); reduce `n_permutations`/`stability_bootstrap`/`reducers`
+  for a quick exploratory run, raise them for a final one. Results stay deterministic.
+- **Validate against a reference when one exists.** e.g. cross-check reducer factors
+  against an established MOFA model (see tests/crosscheck/crosscheck_mofa_factors.py).

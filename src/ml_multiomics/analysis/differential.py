@@ -19,6 +19,7 @@ Operates on RAW / linear abundances (samples x features). See analysis/__init__.
 from __future__ import annotations
 
 import logging
+import warnings
 from itertools import combinations
 
 import numpy as np
@@ -80,7 +81,13 @@ def compute_volcano(
         fc = mean_a / mean_b
         with np.errstate(invalid="ignore", divide="ignore"):
             log2fc = np.log2(fc)
-        pvals = np.array([_welch_p(Xtest[ia, j], Xtest[ib, j]) for j in range(len(features))])
+        # Vectorized Welch t-test across all features at once (per-feature scipy calls
+        # were ~90 s on 5975 features). nan_policy='omit' matches the per-column drop in
+        # _welch_p; features with <2 valid values in a group come back as NaN.
+        with np.errstate(invalid="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            res = stats.ttest_ind(Xtest[ia], Xtest[ib], axis=0, equal_var=False, nan_policy="omit")
+        pvals = np.asarray(np.ma.filled(res.pvalue, np.nan), dtype=float)
 
         contrast = f"{ga}-vs-{gb}"
         sub = pd.DataFrame({

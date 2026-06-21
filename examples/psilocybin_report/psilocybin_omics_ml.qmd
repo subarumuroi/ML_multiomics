@@ -1,11 +1,11 @@
 ---
-title: "Part 3 — Omics & Machine Learning"
-subtitle: "Predicting metabolite yield from phase-3 proteomics"
+title: "Psilocybin multi-omics: standard analysis -> integrative ML"
+subtitle: "A declared, self-documenting, leakage-free assessment"
 author: "ml_multiomics"
 format:
   html:
     toc: true
-    toc-depth: 2
+    toc-depth: 3
     code-fold: true
     embed-resources: true
 jupyter: python3
@@ -14,20 +14,28 @@ execute:
   cache: false
 ---
 
-This report extends the IDEA Bio fermentation report (Parts 1–2) with the omics
-+ machine-learning analysis that the standard template stubs out. It predicts a
-chosen metabolite **yield** from phase-3 **proteomics** using the `ml_multiomics`
-library, and compares methods under leakage-free (per-bioreactor) cross-validation.
+This report relates phase-3 **proteomics + intracellular metabolomics** to a metabolite
+**yield**, for a non-specialist reader. It explains every step: the declared **setup**, the
+conventional **standard analysis** (QC -> preprocessing -> DE -> enrichment), a marked **ML
+divergence point**, the **ML assessment** (judged by *is there signal?*, *does it recur?*,
+*what is it?* — not a single accuracy score), the plain-language **interpretation**, and a
+**provenance appendix**.
+
+> **Rendering is instant.** The heavy ML runs **once** via `python analysis.py` (which prints
+> progress and caches the results); this report just loads the cache. If no cache exists the
+> first render computes it once (a few minutes) and saves it. Re-rendering never "hangs".
 
 ```{python}
 #| echo: false
 #| output: false
 #| tags: [parameters]
-
-# The target compound. Defaults to psilocybin; swap to any compound in the
-# yields file (see "Try another target" at the end). Examples:
-#   psilocybin_ext, tryptamine_ext, psilocin_ext, Baeocystine_ext, serotonin_ext
 compound = "psilocybin_ext"
+# Must match the cached run (see `python analysis.py --help`). Raise n_permutations to
+# 199-999 for a publication-grade p-value (deterministic at a fixed seed). run_construct
+# adds the secondary C1-vs-C2 question.
+n_permutations = 49
+stability_bootstrap = 10
+run_construct = False
 ```
 
 ```{python}
@@ -38,127 +46,455 @@ from pathlib import Path
 HERE = Path.cwd()
 for cand in (HERE, HERE / "examples" / "psilocybin_report"):
     if (cand / "analysis.py").exists():
-        sys.path.insert(0, str(cand))
-        break
+        sys.path.insert(0, str(cand)); break
 import analysis
+import pandas as pd
 import matplotlib.pyplot as plt
-from IPython.display import Markdown
+from IPython.display import Markdown, display
+from ml_multiomics.analysis import figures
 
-res = analysis.run_yield_analysis(compound)
+# loads the cache (instant); computes + caches once if absent
+res = analysis.get_results(compound, n_permutations=n_permutations,
+                           stability_bootstrap=stability_bootstrap, run_construct=run_construct)
+setup = res["setup"]; std = res["standard"]; pp = res["preprocess"]
+ysys = res["yield"]["systematic"]; yint = res["yield"].get("integration")
+ynf = res["yield"].get("native_figures", {})
+assoc = std["assoc"]; bridge = res["yield"].get("bridge", {})
+
+def _short(feats, k=8):
+    fs = [str(f).split("__", 1)[-1] for f in feats[:k]]
+    extra = f" (+{len(feats)-k} more)" if len(feats) > k else ""
+    return (", ".join(f"`{f}`" for f in fs) + extra) if fs else "_none_"
+
+def bridge_md(b):
+    if not b:
+        return "_(bridge not in cache)_"
+    return (
+        f"The univariate screen flagged **{b['n_univariate']}** features; the multivariate ML "
+        f"consensus retained **{b['n_ml']}** (selected stably by >= {b['ml_min_approaches']} approaches). "
+        "Reading the three groups:\n\n"
+        f"- **Agree -- {b['n_agreed']}** (single-feature signal that also survives multivariate + "
+        f"stability; the most trustworthy): {_short(b['agreed'])}\n"
+        f"- **Univariate only -- {b['n_univariate_only']}** (correlate with yield alone but are NOT "
+        f"stably selected jointly -- likely marginal / redundant): {_short(b['univariate_only'])}\n"
+        f"- **ML only -- {b['n_ml_only']}** (little individual correlation, surfaced only in the "
+        f"multivariate/integrated model -- what ML *adds* over the standard screen): {_short(b['ml_only'])}"
+    )
+
+def show(fig, fallback="_(figure unavailable for this run)_"):
+    """Display a matplotlib Figure from the cached result, or a note if absent."""
+    if fig is None:
+        display(Markdown(fallback)); return
+    display(fig); plt.close(fig)
+
+def embed_native(nf, kind, header):
+    """Embed the native R PNGs (paths relative to this report) or explain their absence."""
+    paths = nf.get(kind) or []
+    if not paths:
+        note = nf.get(f"{kind}_note") or nf.get("note") or \
+            "native R figures not generated (Rscript / mixOmics / WGCNA unavailable at cache-build time)"
+        return Markdown(f"_{note}_")
+    md = [header]
+    for p in paths:
+        label = Path(p).stem.split("_", 1)[-1]
+        md.append(f"![{label}]({p}){{width=90%}}\n")
+    return Markdown("\n\n".join(md))
+
+def panel_table(systematic):
+    rows = []
+    for r in systematic["panel"]:
+        if "error" in r:
+            rows.append({"approach": r["approach"], "note": "error: " + r["error"][:40]}); continue
+        cv = r["cv"]; perm = r["permutation"]
+        rows.append({
+            "approach": r["approach"], "n_inputs": r["n_inputs"],
+            **{k: round(cv[k], 3) for k in ("r2", "rmse", "mae", "balanced_accuracy", "accuracy") if k in cv},
+            "perm_p": (round(perm["p_value"], 3) if perm.get("p_value") == perm.get("p_value") else None),
+            "signal?": perm.get("significant"),
+            "overfit?": r["overfit"]["overfit"], "n_stable": r["n_stable"],
+        })
+    return pd.DataFrame(rows)
+
+def cards_md(systematic, limit=4):
+    out = []
+    for r in systematic["panel"][:limit]:
+        if "error" in r:
+            continue
+        c = r["report_card"]
+        out.append(f"**{c['method']}** -- {c['describe']}\n")
+        out.append("- _assumptions:_ " + "; ".join(c["assumptions"]))
+        if c["divergences"]:
+            out.append("- _divergences (this data):_ " + "; ".join(c["divergences"]))
+        out.append("")
+    return "\n".join(out)
+
+def integration_md(integ):
+    g = integ["groups"][0]
+    lines = [f"Integration group: **{' + '.join(g['group'])}** (oversized -> reduced: {g['oversized']})\n"]
+    lines.append("| variant | n selected | selection stability |")
+    lines.append("|---|---|---|")
+    for nm, v in g["variants"].items():
+        if "error" in v:
+            lines.append(f"| {nm} | -- | error: {v['error'][:40]} |"); continue
+        fs = f"{v['frac_stable']:.0%}" if v.get("frac_stable") is not None else "n/a"
+        lines.append(f"| {nm} | {v['n_selected']} | {fs} |")
+    lines.append(f"\n**Verdict:** {g['discriminator'].get('verdict', g['discriminator'].get('note'))}")
+    return "\n".join(lines)
+
+def conclusion_md(setup, systematic, integ):
+    sig = [r for r in systematic["panel"] if "error" not in r and r["permutation"].get("significant")]
+    floor = setup["resolution"]["finest_two_sided_p"]
+    cons = systematic["consensus"]
+    lines = []
+    if sig:
+        lines.append(f"- **Signal:** {len(sig)} approach(es) beat the label-shuffled null (p<0.05); "
+                     f"the finest p this design can produce is ~{floor:.2g}.")
+    else:
+        lines.append(f"- **Signal:** no approach cleared p<0.05 (design's finest possible p ~{floor:.2g}); "
+                     "treat associations as exploratory.")
+    if len(cons):
+        top = ", ".join(f"`{f}`" for f in cons['feature'].head(6))
+        lines.append(f"- **Robust hypothesis:** features recurring across the most approaches: {top} "
+                     "(expand reduced modules/factors to member proteins for enrichment).")
+    else:
+        lines.append("- **Robust hypothesis:** nothing stable across multiple approaches at this n.")
+    if integ and integ.get("groups"):
+        lines.append(f"- **Recommended representation:** {integ['groups'][0]['discriminator'].get('verdict','')}")
+    lines.append(f"- **Reminder:** {setup['n_groups']} independent units; CV is only a gross-overfitting "
+                 "check here, never a performance ranking.")
+    return "\n".join(lines)
 ```
 
-# Part 3.1 — Overview
+# 1. How this analysis was set up
+
+The decisions a human made before any modelling. The engine executes exactly this and nothing
+more — it never guesses the experimental unit, picks layer roles, or combines layers on its own.
+
+```{python}
+#| echo: false
+Markdown("```\n" + res["yield"]["spec"] + "\n```")
+```
 
 ```{python}
 #| echo: false
 Markdown(
-    f"- **Target:** `{res['compound']}` yield (over biomass), phase {res['phase']}\n"
-    f"- **Samples:** {res['n_bioreactors']} bioreactors (one independent unit each)\n"
-    f"- **Features:** {res['n_proteins']} proteins (phase-3 average per bioreactor)\n"
-    f"- **Yield:** mean {res['yield_mean']:.3g}, sd {res['yield_std']:.3g}\n"
-    f"- **Conditions:** " + ", ".join(f"{k} (n={v})" for k, v in res['conditions'].items())
+    f"- **Target:** `{compound}` external yield (phase 3).\n"
+    f"- **Independent unit:** bioreactor (`F#C#_R#`) -- {setup['n_groups']} units, leave-one-"
+    "bioreactor-out so no run leaks across train/test.\n"
+    f"- **Predictor blocks (genuine omics only):** " + ", ".join(f"{b} ({n} features)" for b, n in res['block_sizes'].items()) + ".\n"
+    f"- **Excluded as predictors:** `met_ext_pb` (external/pseudobatch metabolites -- unreliable as "
+    "features; they only *source the yield targets*) and `bio` (Biomass/OD600 -- process data, not an "
+    "omics layer; and biomass is the *denominator* of yield-over-biomass, so as a predictor it is "
+    "circular). bio is kept as a **time-aligned series** (preserved, not modelled) ready to use as an "
+    "input or growth-phase reference in a future analysis -- the package's job here is to interpret OMICS.\n"
+    f"- **Oversized block (auto-reduced before integration):** {setup['oversized_blocks']}.\n"
+    f"- **Baseline to beat:** {setup['baseline_kind']} = {setup['baseline']:.3g}.\n"
+    f"- **Resolution floor:** the finest permutation p this design can produce is "
+    f"~{setup['resolution']['finest_two_sided_p']:.2g} -- a single p-value cannot go below it."
 )
 ```
 
-This is a classic **low-n, high-p** problem: a few dozen samples versus thousands
-of proteins. The pipeline therefore favours regularization and
-*reduce-then-predict*, and validates by leaving out **whole bioreactors** so no
-run leaks across the train/test split.
-
-# Part 3.2 — Descriptive model panel (CV as a guardrail)
-
-Each approach predicts the yield under leave-one-bioreactor-out CV. `Lasso` /
-`ElasticNet` / `RandomForest` use all proteins (z-scored); `PCA→RF` and `NMF→RF`
-first **reduce** the ~4,000 proteins to a few factors, then predict.
-
-**This is not a leaderboard.** At ~28 bioreactors a single CV R² is noisy — read
-the panel as *"does anything clear the predict-the-mean baseline (R²=0) without
-obviously overfitting, and do the reduced models hold up?"*, not as a precise
-ranking. The value of reducing the big proteomics block is interpretability and
-block-balancing, described below — not winning a contest.
-
 ```{python}
 #| echo: false
-res["comparison"].round(3)
+#| label: fig-blocks
+#| fig-cap: "Block sizes (log scale). The red block dwarfs the others by >5x and >200 features, so it is reduced to factors/modules before integration -- otherwise it dominates DIABLO."
+show(figures.block_sizes(res["block_sizes"], setup["oversized_blocks"]))
 ```
 
 ```{python}
 #| echo: false
-comp = res["comparison"]
-fig, ax = plt.subplots(figsize=(6.5, 3.4))
-ax.barh(comp["method"], comp["r2"], color="#2B6CB0")
-ax.set_xlabel("Leave-one-bioreactor-out $R^2$  (0 = predict-the-mean baseline)")
-ax.set_title(f"{res['compound']} yield — descriptive panel (not a ranking)")
-ax.axvline(0, color="0.4", lw=0.8)
-ax.invert_yaxis()
-fig.tight_layout()
-plt.show()
+#| label: fig-pca
+#| fig-cap: "PCA of the oversized block (fit on all samples, for orientation only -- NOT the leakage-free model). Each point is one bioreactor, coloured by yield; a colour gradient along a PC suggests proteome structure tracks yield."
+show(figures.pca_scores(ysys["pca_scores"]) if ysys.get("pca_scores") else None)
+```
+
+# 2. Standard analysis (the lab-convention pipeline)
+
+## 2.1 Quality control -- per block
+
+```{python}
+#| echo: false
+std["qc"]
+```
+
+## 2.2 Preprocessing -- the exact steps and intermediate sizes
+
+```{python}
+#| echo: false
+Markdown(
+    "The preprocessing pipeline on the proteomics block. **For the standard analysis it runs once "
+    "globally; for the ML below it is refit INSIDE every cross-validation fold on the training rows "
+    "only** (leakage-free). Steps and intermediate feature counts:\n\n"
+    f"- detection filter `min_obs_frac={pp['min_obs_frac']}` (keep features seen in >=50% of units), "
+    f"variance filter, impute (`{pp['impute']}`, left-censored for below-detection), per-feature z-score.\n"
+    f"- proteomics features: **{pp['n_in']} -> {pp['n_kept']}** kept after filtering."
+)
+```
+
+```{python}
+#| echo: false
+Markdown(pp["provenance"])
+```
+
+## 2.3 Univariate feature-yield association (the standard single-feature screen)
+
+```{python}
+#| echo: false
+Markdown(
+    f"The standard single-feature step for a CONTINUOUS outcome is not a two-group volcano but a "
+    f"per-feature **correlation with yield**: Spearman rho (rank-based -- robust at "
+    f"{std['assoc_n_units']} units and invariant to the log transform) + BH FDR **per block**. This "
+    "is the conventional precursor to the multivariate ML below, and is reported on the SAME target "
+    "so the two connect. Top features by q-value (across all predictor blocks):"
+)
+```
+
+```{python}
+#| echo: false
+assoc.head(12)[["block", "feature", "rho", "pvalue", "qvalue"]].assign(
+    feature=lambda d: d["feature"].str.split("__").str[-1]).round(4)
+```
+
+```{python}
+#| echo: false
+#| label: fig-assoc
+#| fig-cap: "Univariate yield-association 'volcano': each feature's correlation with yield (rho) vs -log10 p. Red = passes FDR. This single-feature view is what the multivariate ML then builds on."
+show(figures.association_volcano(assoc) if len(assoc) else None,
+     "_no association results to plot_")
+```
+
+## 2.4 Enrichment input
+
+```{python}
+#| echo: false
+Markdown("A ranked proteomics feature list (signed -log10 p, sign from the yield correlation) for "
+         "the R clusterProfiler/fgsea GSEA path (GSEA is intentionally not reimplemented in pure Python).")
+```
+
+```{python}
+#| echo: false
+std["gsea_ranked"].head(10).round(3).to_frame("rank_stat")
+```
+
+# === ML divergence point ===
+
+Everything above is the standard descriptive pipeline, on the **same target** the ML predicts —
+the univariate screen asks *which single features correlate with yield*. The ML below answers the
+harder question — *which coordinated, multi-block signature predicts yield and recurs* — and three
+things change deliberately: preprocessing (and any reduction) is **refit inside each fold** on
+training rows only; the oversized proteomics block is **reduced** (PCA / NMF / WGCNA) before
+integration; and **cross-validation is reported only as a binary overfitting flag**, never a score —
+signal comes from permutation, trust from stability. Section 3.0 then closes the loop by comparing
+the two against each other.
+
+# 3. Yield assessment (regression -- the headline)
+
+```{python}
+#| echo: false
+Markdown(
+    "**How to read the panel.** `n_inputs` = features the model saw (after filtering/reduction). "
+    "`r2/rmse/mae` = leave-one-bioreactor-out CV (a SANITY check, not a ranking; R2<=0 means no "
+    "better than predict-the-mean). `perm_p` = permutation p (beyond chance?); `signal?` = "
+    "significant. `overfit?` = large train-vs-CV gap. `n_stable` = selected features that recur "
+    "under resampling. `perm_p` is blank where permutation was skipped for a very large naive design."
+)
+```
+
+```{python}
+#| echo: false
+panel_table(ysys)
+```
+
+```{python}
+#| echo: false
+#| label: fig-perm
+#| fig-cap: "Permutation null for the strongest-signal approach: the grey histogram is the score under randomly shuffled yields; the red line is the observed score. Far into the right tail = unlikely by chance. The dashed floor is the finest p this design can resolve."
+_perm = [r for r in ysys["panel"] if "error" not in r and r.get("permutation", {}).get("null")]
+_best = min(_perm, key=lambda r: r["permutation"].get("p_value", 1.0)) if _perm else None
+show(figures.permutation_hist(_best) if _best else None,
+     "_no permutation null stored (permutation skipped for a very large naive design)_")
+```
+
+```{python}
+#| echo: false
+Markdown("**Which representation to trust** -- signal + stability + parsimony, never raw score:")
+for d in ysys["discriminators"]:
+    display(Markdown(f"- {d['verdict']}"))
+```
+
+```{python}
+#| echo: false
+Markdown("**Cross-method consensus** -- features stable across multiple approaches. Agreement across "
+         "independent methods is the robust, trustworthy hypothesis; a long single-method list is not.")
+display(ysys["consensus"].head(12))
+```
+
+```{python}
+#| echo: false
+#| label: fig-consensus
+#| fig-cap: "Cross-method consensus: how many independent approaches selected each feature stably. Features endorsed by several methods are the most trustworthy hypotheses."
+show(figures.consensus_bar(ysys["consensus"]))
+```
+
+```{python}
+#| echo: false
+#| label: fig-tree
+#| fig-cap: "Top feature importances for the winning tree model (the RandomForest/XGBoost candidate with the best CV). Tree importances are a single-model view; cross-check against the consensus above."
+_btr = figures.best_tree_row(ysys["panel"])
+show(figures.tree_importances(_btr) if _btr else None,
+     "_no tree model with stored importances in this run_")
+```
+
+## 3.0 Standard -> ML synthesis (the integrated through-line)
+
+```{python}
+#| echo: false
+Markdown(
+    "This is where the standard analysis and the ML **connect** -- the point of running them as one "
+    "workflow. We cross-reference the **univariate yield screen** (Section 2.3) against the "
+    "**multivariate ML consensus** (above), on the same target and the same feature names:")
+```
+
+```{python}
+#| echo: false
+display(Markdown(bridge_md(bridge)))
 ```
 
 ```{python}
 #| echo: false
 Markdown(
-    f"Predict-the-mean baseline RMSE = {res['baseline_mean_rmse']:.3g} (R²=0). "
-    "Models above the 0 line carry signal beyond the mean; treat differences "
-    "between them as within-noise at this sample size, and prefer the reduced, "
-    "interpretable representations for downstream hypotheses."
-)
+    "**Why this matters.** *Agree* is the robust core -- a single-feature correlation that also "
+    "holds up jointly and under resampling. *Univariate only* is the cautionary set the standard "
+    "analysis alone would have over-trusted: features that correlate marginally but don't survive "
+    "multivariate selection. *ML only* is the value the integrated workflow adds -- signal visible "
+    "only when features are modelled together across blocks. The standard analysis is not discarded "
+    "at the divergence point; it is carried through and reconciled.")
 ```
 
-# Part 3.3 — What drives the prediction
+## 3.1 DIABLO integration: naive vs reduced
 
 ```{python}
 #| echo: false
-Markdown("**RandomForest — top proteins by importance:**")
-```
-
-```{python}
-#| echo: false
-res["top_features"]["RandomForest"].round(4)
-```
-
-```{python}
-#| echo: false
-Markdown("**NMF factor 1 — top protein loadings:**")
+Markdown("The core block-imbalance argument. **naive** integrates raw proteomics directly; the "
+         "reduced variants reduce it to modules/factors first. Compare the **selection stability**: "
+         "an individual-protein list that doesn't recur is not trustworthy, whereas stable modules/"
+         "factors are -- and expand back to member proteins for biology.")
+display(Markdown(integration_md(yint)) if yint else Markdown("_(integration not in cache)_"))
 ```
 
 ```{python}
 #| echo: false
-res["top_features"]["NMF_factor1"].round(4)
+#| label: fig-naive-reduced
+#| fig-cap: "Selection stability per integration variant: raw 'naive' DIABLO vs reducing the oversized block first. Higher = the selected drivers recur under resampling = more trustworthy. This is the quantitative core of the block-imbalance argument."
+show(figures.naive_vs_reduced(yint) if yint else None,
+     "_(integration not in cache)_")
 ```
 
-# Part 3.4 — How much to trust this
+### Native mixOmics DIABLO plots
 
 ```{python}
 #| echo: false
-r = res["resolution"]
+Markdown("The iconic mixOmics views of the **preferred** representation "
+         f"(`{ynf.get('reducer','?')}`), fit on all samples for illustration. "
+         "**plotIndiv** = do the blocks place the same samples consistently; "
+         "**plotVar / circosPlot** = which variables correlate ACROSS blocks (the cross-omics "
+         "signature); **plotLoadings** = the top contributors on component 1.")
+```
+
+```{python}
+#| echo: false
+embed_native(ynf, "diablo", "")
+```
+
+### Native WGCNA plots (oversized block)
+
+```{python}
+#| echo: false
+Markdown("WGCNA on the oversized proteomics block: the **soft-threshold** scale-free fit (why this "
+         "power), the **module dendrogram** (co-abundance modules), and the **module-trait** heatmap "
+         "(which modules correlate with yield). At >=15 units these are interpretable; below that they "
+         "are omitted.")
+```
+
+```{python}
+#| echo: false
+embed_native(ynf, "wgcna", "")
+```
+
+## 3.2 What each model assumes (and where it diverges, on THIS data)
+
+```{python}
+#| echo: false
+Markdown(cards_md(ysys))
+```
+
+# 4. Construct C1 vs C2 (nominal; which omics separate the engineered constructs)
+
+A second, categorical question (set `run_construct = True` and rebuild the cache). **Caveat (a
+declared divergence):** construct C is crossed with fermentation batch F, so a C1-vs-C2 split may
+partly reflect batch.
+
+```{python}
+#| echo: false
+if "construct" in res:
+    cst = res["construct"]
+    if "standard" in cst:
+        display(Markdown(f"**Standard precursor (matched to this categorical question):** differential "
+                         f"expression across C1 vs C2, aggregated to {cst['standard']['de_n_units']} units "
+                         "(Welch t on log + BH; verified ~1e-15 vs reference R). Top hits:"))
+        dv = cst["standard"]["de_volcano"]
+        display(dv.reindex(dv["qvalue"].sort_values().index).head(8)[["feature", "log2fc", "pvalue", "qvalue"]])
+    display(Markdown("**Multivariate ML:**"))
+    display(panel_table(cst["systematic"]))
+    if "integration" in cst:
+        display(Markdown(integration_md(cst["integration"])))
+else:
+    display(Markdown("_Construct (nominal) assessment not in this cache (`run_construct = False`). "
+                     "Enable it for the full two-question report (it ships with its own matched DE precursor)._"))
+```
+
+# 5. Interpretation -- what this means
+
+```{python}
+#| echo: false
+Markdown(conclusion_md(setup, ysys, yint))
+```
+
+```{python}
+#| echo: false
+Markdown("**How to use this:** follow up the robust-hypothesis features/modules biologically "
+         "(enrichment, literature, targeted validation). Do NOT treat any model here as a deployable "
+         "predictor -- at this sample size the goal is trustworthy hypotheses, not yield forecasting.")
+```
+
+# Appendix -- provenance (reproduce without AI)
+
+```{python}
+#| echo: false
+Markdown("The standard-analysis steps, recorded with parameters and input/output shapes. With the "
+         "declared spec (Section 1) and the fixed seed, anyone can reproduce the numbers exactly. "
+         "The ML preprocessing trail is in Section 2.2.")
+display(Markdown(std["assoc_provenance"]))
+```
+
+# Appendix -- preserved bio time-series (not modelled)
+
+```{python}
+#| echo: false
 Markdown(
-    f"- **Sample size:** {res['n_bioreactors']} independent bioreactors. Treat results "
-    f"as **exploratory** and cross-check methods.\n"
-    f"- **Statistical resolution:** with this design the finest achievable "
-    f"permutation p-value is ~{r['finest_two_sided_p']:.2g} — a single p-value "
-    f"cannot go below that floor, so we report effect size (R²) first.\n"
-    f"- **Goal is interpretation, not a deployable predictor.** At this n we use\n"
-    f"  the panel to find signal and stable, interpretable factors/proteins — not\n"
-    f"  to claim a production model.\n"
-    f"- **Reducing proteomics is principled preprocessing:** ~4,000 proteins → a\n"
-    f"  few factors balances the (single) block and yields interpretable axes; the\n"
-    f"  reducers (PCA/NMF) are standard sklearn, no parameter guesswork.\n"
-    f"- **No leakage:** every fold left out whole bioreactors; no double-scaling "
-    f"(data scaled once in preprocessing); NMF ran on non-negative log2 data."
-)
+    "`bio` (Biomass, OD600) is **excluded from the predictors** (process data, not omics; circular "
+    "with yield-over-biomass) but its rich time information is **preserved here, aligned by "
+    "timepoint** -- one row per (bioreactor, timepoint). It is ready to join to any omics layer by "
+    "`(bioreactor, timepoint)` to annotate growth phase, or to use as an easy-to-collect input in a "
+    "future analysis. First rows:")
+display(res["bio_timeseries"].head(8))
 ```
 
-# Part 3.5 — Try another target
-
-To rerun for a different metabolite, change the `compound` parameter at the top
-(or render with `-P compound:tryptamine_ext`). Available compounds:
+# Try another target
 
 ```{python}
 #| echo: false
-Markdown(", ".join(f"`{c}`" for c in analysis.available_compounds()))
+Markdown("Rebuild the cache for another compound: `python analysis.py --compound tryptamine_ext`, "
+         "then set `compound` above. Available: "
+         + ", ".join(f"`{c}`" for c in analysis.available_compounds()[:12]) + " ...")
 ```
-
-Internal metabolites and growth rate can be targeted the same way once added to
-the yields table. The method comparison, top features, and caveats above
-regenerate automatically for whichever target you choose.

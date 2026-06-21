@@ -47,6 +47,30 @@ class RegularizedLinear(BaseMethod):
         self.feature_names_ = None
         self.task_ = None
 
+    _PARAM_KEYS = ("task", "alpha", "l1_ratio", "max_iter")
+
+    def describe(self) -> str:
+        kind = "LASSO (pure L1)" if self.l1_ratio >= 1.0 else f"elastic net (l1_ratio={self.l1_ratio})"
+        return (
+            f"Regularized linear model -- {kind}. Performs embedded feature selection by shrinking "
+            "coefficients to zero (regression) or balanced logistic regression (classification). "
+            "Read the non-zero coefficients as the selected, signed predictors; selection is "
+            "sensitive to alpha and to correlated features, so confirm with stability."
+        )
+
+    def assumptions(self) -> list[str]:
+        return super().assumptions() + [
+            "Linear (additive) relationship between features and target on the modelled scale.",
+            "Among correlated features L1 selects one somewhat arbitrarily -- selection identity is unstable.",
+        ]
+
+    def divergences(self, context=None) -> list[str]:
+        out = super().divergences(context)
+        ctx = context or {}
+        if ctx.get("target_type") == "ordinal":
+            out.append("Ordinal target fitted by (balanced) logistic classification -- order is discarded.")
+        return out
+
     def _resolve_task(self, y, target_type=None) -> str:
         if self.task != "auto":
             return self.task

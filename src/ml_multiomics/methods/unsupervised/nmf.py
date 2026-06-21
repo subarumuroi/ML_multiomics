@@ -48,6 +48,30 @@ class NMF(BaseMethod):
         self.feature_names_ = None
         self.index_ = None
 
+    _PARAM_KEYS = ("n_components", "max_iter", "random_state", "init", "nonneg")
+
+    def describe(self) -> str:
+        return (
+            "Non-negative matrix factorization: an UNSUPERVISED reducer that decomposes the data "
+            "into additive, parts-based factors (all weights >= 0), often more interpretable than "
+            "PCA. Used for reduce->predict. Read factors as co-occurring feature programs and the "
+            "scores (W) as each sample's loading on them."
+        )
+
+    def assumptions(self) -> list[str]:
+        return super().assumptions() + [
+            "Input is NON-NEGATIVE (intensities on a log scale), NOT z-scored.",
+            "The signal decomposes into additive parts (no cancellation).",
+        ]
+
+    def divergences(self, context=None) -> list[str]:
+        out = super().divergences(context)
+        out.append(
+            "Requires non-negative input, so it runs on log-only (un-z-scored) data -- a DIFFERENT "
+            "preprocessing than the z-scored methods; not input-identical to them."
+        )
+        return out
+
     def _ensure_nonneg(self, arr: np.ndarray) -> np.ndarray:
         mn = arr.min()
         if mn >= 0:

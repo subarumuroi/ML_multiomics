@@ -41,17 +41,53 @@ class WGCNA(BaseMethod):
 
     def __init__(self, power=None, network_type: str = "unsigned",
                  min_module_size: int = 20, merge_cut_height: float = 0.25,
-                 impute: str = "metaboanalyst", rscript: str = "Rscript"):
+                 impute: str = "metaboanalyst", rscript: str = "Rscript",
+                 timeout: int = 300):
         super().__init__(impute=impute)
         self.power = power
         self.network_type = network_type
         self.min_module_size = min_module_size
         self.merge_cut_height = merge_cut_height
         self.rscript = rscript
+        self.timeout = timeout      # bound R hangs (e.g. WGCNA at very small n)
         self.modules_ = None        # DataFrame feature/module
         self.eigengenes_ = None     # DataFrame samples x modules
         self.index_ = None
         self.feature_names_ = None
+
+    _PARAM_KEYS = ("power", "network_type", "min_module_size", "merge_cut_height")
+
+    def describe(self) -> str:
+        return (
+            "WGCNA (reference R implementation): an UNSUPERVISED reducer that groups co-abundant "
+            "features into modules (data-driven count via dynamic tree cut) and summarises each "
+            "module by its eigengene. Used to reduce a large block to a few biologically coherent "
+            "module profiles before integration. Read a module as a co-regulated feature program; "
+            "the eigengene is its representative sample profile."
+        )
+
+    def assumptions(self) -> list[str]:
+        return super().assumptions() + [
+            "Co-abundance (correlation) structure reflects biology; approx. scale-free topology.",
+            "Adequate sample size (WGCNA expects n >= ~15-20); at small n modules are exploratory.",
+        ]
+
+    def divergences(self, context=None) -> list[str]:
+        out = super().divergences(context)
+        ctx = context or {}
+        ng = ctx.get("n_groups")
+        if ng is not None and ng < 15:
+            out.append(
+                f"Only {ng} units (< WGCNA's ~15-20): module detection is exploratory regardless "
+                "of implementation."
+            )
+        mf = ctx.get("missing_frac")
+        if mf and mf > 0.2:
+            out.append(
+                "Correlation-based: imputed near-constant features can create spurious modules; a "
+                "detection filter (min_obs_frac) is applied before WGCNA."
+            )
+        return out
 
     def fit(self, X, y=None, feature_names=None, target_type=None) -> "WGCNA":
         Xp = self._prepare_X(X)
@@ -72,8 +108,13 @@ class WGCNA(BaseMethod):
                    "merge_cut_height": float(self.merge_cut_height),
                    "power": None if self.power is None else int(self.power)}
             (work / "config.json").write_text(json.dumps(cfg))
-            res = subprocess.run([self.rscript, str(_RSCRIPT), str(work)],
-                                 capture_output=True, text=True)
+            try:
+                res = subprocess.run([self.rscript, str(_RSCRIPT), str(work)],
+                                     capture_output=True, text=True, timeout=self.timeout)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError(
+                    f"R WGCNA timed out after {self.timeout}s (often n too small for WGCNA, "
+                    "which expects >= ~15-20 samples)")
             if res.returncode != 0:
                 raise RuntimeError(f"R WGCNA failed:\n{res.stdout}\n{res.stderr}")
             self.modules_ = pd.read_csv(work / "modules.csv")

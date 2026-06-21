@@ -213,3 +213,10 @@ Thumbs.db
 results/
 *.pyc
 __pycache__/
+
+# report results cache (regenerate with python analysis.py)
+examples/**/_cache/
+*.pkl
+
+# native-R figure PNGs (regenerated at cache build; inlined into the rendered HTML)
+examples/**/_figures/

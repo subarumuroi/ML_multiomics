@@ -62,6 +62,34 @@ class RandomForest(BaseMethod):
         self.feature_names_ = None
         self.task_ = None
 
+    _PARAM_KEYS = ("task", "n_estimators", "max_depth", "random_state")
+
+    def describe(self) -> str:
+        return (
+            "Random forest of shallow trees (small max_depth for small-n) for classification "
+            "or regression. Nonlinear, no built-in feature selection; reports impurity-based "
+            "feature importances. Read the importances as a ranking of predictors -- but at "
+            "small n they are unstable, so weight them by the bootstrap stability result."
+        )
+
+    def assumptions(self) -> list[str]:
+        return super().assumptions() + [
+            "No distributional assumptions; uses all supplied features.",
+            "Impurity importances are model-internal and can be inflated for high-cardinality "
+            "or correlated features.",
+        ]
+
+    def divergences(self, context=None) -> list[str]:
+        out = super().divergences(context)
+        ctx = context or {}
+        nf, ng = ctx.get("n_features"), ctx.get("n_groups")
+        if nf and ng and nf > 5 * ng:
+            out.append(
+                f"p>>n ({nf} features, {ng} units): forest importances spread thin and are "
+                "unstable; a reduce->predict representation is usually more interpretable."
+            )
+        return out
+
     # -- task resolution ---------------------------------------------------
     def _resolve_task(self, y, target_type=None) -> str:
         if self.task != "auto":

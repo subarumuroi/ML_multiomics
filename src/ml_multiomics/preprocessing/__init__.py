@@ -16,10 +16,10 @@ from .imputation import (
     metaboanalyst_impute, remove_all_missing, impute, IMPUTERS,
     imputepca, imputepca_by_group,
 )
-from .pipeline import Preprocessor, Profile, DEFAULT_PROFILES
+from .pipeline import Preprocessor, FittablePreprocessor, Profile, DEFAULT_PROFILES
 
 __all__ = [
-    "Preprocessor", "Profile", "DEFAULT_PROFILES",
+    "Preprocessor", "FittablePreprocessor", "Profile", "DEFAULT_PROFILES",
     "log2_transform", "log10_transform", "zscore",
     "variance_filter", "missingness_filter", "missingness_filter_by_group",
     "metaboanalyst_impute", "remove_all_missing", "impute", "IMPUTERS",
