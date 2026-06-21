@@ -28,6 +28,7 @@ from .standard import (
     over_representation, gsea_ranked_list,
 )
 from . import figures
+from .native_plots import diablo_plots, wgcna_plots
 
 __all__ = [
     "compute_volcano", "anova_tukey", "ora",
@@ -35,5 +36,5 @@ __all__ = [
     "systematic_assessment", "integration_assessment", "FoldPipeline",
     "qc_summary", "aggregate_to_units", "differential_expression",
     "over_representation", "gsea_ranked_list",
-    "figures",
+    "figures", "diablo_plots", "wgcna_plots",
 ]
