@@ -40,7 +40,7 @@ provenance log.
 
 ## 2. Preprocessing
 
-Preprocessing has **three stages, and imputation is method-gated** (see §3):
+Preprocessing has **three stages, and imputation is method-gated**:
 
 1. **Transform** (missing-aware): `log2(x+1)` (default for proteomics) or
    `log10` (default for metabolomics/volatiles). NaN is preserved; non-positive
@@ -58,7 +58,7 @@ hierarchy. Default per-omics profiles follow the lab's conventions.
 
 The library's defaults match the lab's own standard-analysis tooling
 (`IdeaBio.R` / `IdeaBio.jl`), reimplemented in pure Python and **verified
-numerically** (§5):
+numerically**:
 
 | Step | Convention | Source / parity |
 |------|------------|-----------------|
@@ -78,7 +78,7 @@ numerically** (§5):
 - **`log2(x+1)` vs plain `log2(x)`.** The default uses the `+1` pseudocount
   (zero-safe, matches the validated MOFA pipeline). IdeaBio.jl uses plain
   `log2(x)` (zeros → missing). Both are available as profile options; the
-  difference is *only* the pseudocount (verified, §5).
+  difference is *only* the pseudocount (verified).
 - **MetaboAnalyst min basis.** R and this library use `0.2 × min(positive)`;
   IdeaBio.jl uses `0.2 × min(non-missing)`. Identical on positive intensity data.
 
@@ -108,7 +108,7 @@ a capability flag, not by imputing everything up front:
 
 Imputation strategies available: `metaboanalyst` (default), `remove_all_missing`,
 `imputepca` (regularized iterative PCA; pure-Python, machine-precision parity
-with missMDA — §5).
+with missMDA).
 
 ---
 
@@ -212,9 +212,9 @@ at machine precision.
 | primitive | vs IdeaBio.R | vs IdeaBio.jl | notes |
 |-----------|--------------|---------------|-------|
 | z-score (complete) | MATCH ~3e-15 | MATCH 0.0 | identical |
-| z-score (missing) | diverges (by design) | MATCH 0.0 | follow Julia / skip-NaN (§2) |
+| z-score (missing) | diverges (by design) | MATCH 0.0 | follow Julia / skip-NaN |
 | log10 | MATCH ~5e-15 | MATCH 0.0 | |
-| log2 | — | `+1` pseudocount diff | documented default (§2) |
+| log2 | — | `+1` pseudocount diff | documented default |
 | MetaboAnalyst impute | MATCH 0.0 | MATCH 0.0 | |
 | imputePCA / by-group | MATCH ~5e-14 | n/a | faithful missMDA port |
 
@@ -240,7 +240,7 @@ conventions, cross-checked vs the actual R (`run_crosscheck_de.py`):
 - **Pseudoreplication caveat (flagged for review):** the lab's DE, and this port,
   treat every sample as independent. For repeated-measures designs (timepoints
   per bioreactor) aggregate to one row per independent unit *before* DE.
-- ⚠️ **Bug found in the lab's `compute_volcano`, NOT replicated.** It labels
+- **Bug found in the lab's `compute_volcano`, NOT replicated.** It labels
   result features with `rep(colnames(fc), times=nrow(fc))` where it needs
   `each=nrow(fc)`; because R unrolls the matrix column-major, **feature labels
   are mis-paired with their values whenever there is more than one contrast.**
