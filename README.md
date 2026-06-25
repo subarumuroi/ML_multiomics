@@ -75,8 +75,7 @@ examples/        skill_walkthrough.py, psilocybin_report/ (Quarto)
 
 Consolidated and verified: data model, preprocessing (lab-parity), grouping-aware
 validation, 9 methods, standard DE/enrichment, a skill, and a rendering Quarto
-report. MOFA (single-group) is the remaining method to fold in; see
-[CONSOLIDATION_PLAN.md](CONSOLIDATION_PLAN.md).
+report. MOFA (single-group) is the remaining method to fold in.
 
 ## License
 

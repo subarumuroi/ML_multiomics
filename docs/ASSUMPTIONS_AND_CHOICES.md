@@ -8,7 +8,7 @@ choice is paired with *why* and, where relevant, the numerical evidence
 
 > Scope: this is the "for posterity / publication" reference. For a hands-on
 > walkthrough see [TUTORIAL.md](TUTORIAL.md); for the high-level architecture see
-> [../CONSOLIDATION_PLAN.md](../CONSOLIDATION_PLAN.md).
+the repository README.
 
 ---
 

@@ -6,7 +6,7 @@ The canonical multi-omics container.
 One ``OmicsDataset`` holds N omics blocks (single-omics = 1 block), a shared
 sample-metadata table, an optional target spec, and a per-block provenance log.
 
-Design rules (see CONSOLIDATION_PLAN.md §8):
+Design rules:
   * Blocks may have DIFFERENT sample sets. Alignment is ALWAYS by sample ID with
     intersection, never by position.
   * Provenance is tracked per block (transformed / normalized / imputed + a step
