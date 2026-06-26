@@ -87,6 +87,8 @@ class FoldPipeline:
         p = self.plan[layer]
         if p.get("for_nmf"):
             prof = Profile(transform="log2", normalize="none", variance_min=1e-8)
+        elif p.get("transform"):
+            prof = Profile(transform=p["transform"])   # spec transform override (keeps z-score + var filter)
         else:
             prof = None  # default per omics_type (z-score)
         return FittablePreprocessor(profile=prof, omics_type=p.get("omics_type"),
@@ -265,7 +267,8 @@ def systematic_assessment(
             plan = {}
             for ly in predictors:
                 p = {"omics_type": ds.blocks[ly].omics_type,
-                     "input_state": spec.input_state_for(ly)}
+                     "input_state": spec.input_state_for(ly),
+                     "transform": spec.transform_for(ly)}      # honor per-layer transform override
                 if native_missing:
                     p.update(impute=None, min_obs_frac=None)             # XGBoost: raw NaN
                 else:
@@ -395,10 +398,15 @@ def systematic_assessment(
     }
 
 
-def _preprocess_block(df, omics_type, *, for_nmf=False, impute="metaboanalyst",
+def _preprocess_block(df, omics_type, *, for_nmf=False, transform=None, impute="metaboanalyst",
                       min_obs_frac=None, input_state=None):
     """Full-data preprocess one block to a complete matrix for DIABLO (descriptive)."""
-    prof = Profile(transform="log2", normalize="none", variance_min=1e-8) if for_nmf else None
+    if for_nmf:
+        prof = Profile(transform="log2", normalize="none", variance_min=1e-8)
+    elif transform:
+        prof = Profile(transform=transform)       # spec transform override (keeps z-score + var filter)
+    else:
+        prof = None
     pp = FittablePreprocessor(profile=prof, omics_type=omics_type, min_obs_frac=min_obs_frac,
                               impute=impute, input_state=input_state)
     return pp.fit_transform(df)
@@ -443,6 +451,7 @@ def integration_blocks(ds: OmicsDataset, spec: AnalysisSpec, reducer: Optional[s
     for ly in grp:
         if reducer and ly in oversized:
             Z = _preprocess_block(raw[ly], ds.blocks[ly].omics_type, for_nmf=(reducer == "nmf"),
+                                  transform=spec.transform_for(ly),
                                   impute="metaboanalyst", min_obs_frac=spec.min_obs_frac,
                                   input_state=spec.input_state_for(ly))
             red = (PCA(n_components=n_factors, random_state=seed) if reducer == "pca"
@@ -453,6 +462,7 @@ def integration_blocks(ds: OmicsDataset, spec: AnalysisSpec, reducer: Optional[s
             membership[ly] = prov
         else:
             blocks[ly] = _preprocess_block(raw[ly], ds.blocks[ly].omics_type,
+                                           transform=spec.transform_for(ly),
                                            impute="metaboanalyst", min_obs_frac=spec.min_obs_frac,
                                            input_state=spec.input_state_for(ly))
     return blocks, yv, oversized, membership
@@ -519,6 +529,7 @@ def integration_assessment(
 
         # ---- naive: raw (z-scored) blocks ----
         blocks_naive = {ly: _preprocess_block(raw[ly], ds.blocks[ly].omics_type,
+                                              transform=spec.transform_for(ly),
                                               impute="metaboanalyst", min_obs_frac=spec.min_obs_frac,
                                               input_state=spec.input_state_for(ly)) for ly in grp}
         variants["naive"] = {"blocks": blocks_naive, "membership": None, "reducer": None}
@@ -530,6 +541,7 @@ def integration_assessment(
                 for ly in grp:
                     if ly in oversized:
                         Z = _preprocess_block(raw[ly], ds.blocks[ly].omics_type, for_nmf=(r == "nmf"),
+                                              transform=spec.transform_for(ly),
                                               impute="metaboanalyst", min_obs_frac=spec.min_obs_frac,
                                               input_state=spec.input_state_for(ly))
                         reducer = (PCA(n_components=n_factors, random_state=seed) if r == "pca"
@@ -540,6 +552,7 @@ def integration_assessment(
                         membership[ly] = prov
                     else:
                         balanced[ly] = _preprocess_block(raw[ly], ds.blocks[ly].omics_type,
+                                                         transform=spec.transform_for(ly),
                                                          impute="metaboanalyst", min_obs_frac=spec.min_obs_frac,
                                                          input_state=spec.input_state_for(ly))
                 variants[r] = {"blocks": balanced, "membership": membership, "reducer": r}

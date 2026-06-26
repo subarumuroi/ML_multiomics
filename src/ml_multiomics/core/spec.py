@@ -205,6 +205,25 @@ class AnalysisSpec:
                         "only predictor layers may be integrated"
                     )
 
+        # covariate role is part of the API but the engine does NOT yet adjust for
+        # covariates -- reject rather than silently drop the layer (no false promise).
+        cov = self.covariate_layers()
+        if cov:
+            errors.append(
+                f"covariate role is declared for {cov} but covariate adjustment is NOT yet "
+                "implemented; declare these as 'predictor' or 'exclude' (covariate support is planned)"
+            )
+
+        # transform overrides must name a transform the preprocessor can actually run
+        # (otherwise it would have been a silent no-op before this check existed).
+        for layer, tname in self.transforms.items():
+            if tname not in KNOWN_TRANSFORMS:
+                errors.append(
+                    f"transform {tname!r} for layer {layer!r} is unknown; choose from {KNOWN_TRANSFORMS}"
+                )
+            if layer not in block_names:
+                errors.append(f"transform declared for unknown layer {layer!r}")
+
         if errors:
             raise ValueError("AnalysisSpec invalid:\n  - " + "\n  - ".join(errors))
         return self

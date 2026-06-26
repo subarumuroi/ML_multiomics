@@ -39,6 +39,33 @@ def group_kfold(groups, n_splits: int) -> list[tuple[np.ndarray, np.ndarray]]:
     return list(GroupKFold(n_splits=n_splits).split(X_dummy, groups=groups))
 
 
+def _group_labels(groups, labels) -> dict:
+    """One label per group, REQUIRING the label be constant within each group.
+
+    Group-level permutation reassigns one label per group; if a group carries
+    more than one distinct label (a misspecified repeated-measures design where
+    the target varies within the independent unit), the null would be built on a
+    different y-structure than the observed score and the p-value would be wrong.
+    Rather than silently take the first value, we reject -- aggregate to one row
+    per group first (the reports do). Constant-within-group designs pass cleanly.
+    """
+    g = np.asarray(groups)
+    y = np.asarray(labels)
+    grp_label: dict = {}
+    bad = []
+    for gi in dict.fromkeys(g.tolist()):
+        vals = pd.unique(y[g == gi])
+        if len(vals) > 1:
+            bad.append(gi)
+        grp_label[gi] = vals[0]
+    if bad:
+        raise ValueError(
+            f"{len(bad)} group(s) carry >1 distinct target value (e.g. {bad[:3]}); group-level "
+            "permutation needs one label per group -- aggregate to one row per independent unit first."
+        )
+    return grp_label
+
+
 def permutation_resolution(groups, labels) -> dict:
     """Finest achievable group-level permutation p-value for this design.
 
@@ -49,11 +76,7 @@ def permutation_resolution(groups, labels) -> dict:
 
     Returns: n_groups, label_counts, n_distinct_arrangements, finest_two_sided_p.
     """
-    g = np.asarray(groups)
-    y = np.asarray(labels)
-    grp_label: dict = {}
-    for gi, yi in zip(g, y):
-        grp_label.setdefault(gi, yi)
+    grp_label = _group_labels(groups, labels)
     counts = Counter(grp_label.values())
     n_groups = len(grp_label)
     denom = 1
@@ -81,8 +104,9 @@ def grouped_permutation_test(score_fn, groups, y, n_permutations: int = 1000, se
     y = np.asarray(y)
     true_score = score_fn(y)
 
-    uniq = list(dict.fromkeys(g.tolist()))
-    grp_label = np.array([y[g == gi][0] for gi in uniq])
+    gl = _group_labels(g, y)                       # validates one label per group
+    uniq = list(gl.keys())
+    grp_label = np.array([gl[gi] for gi in uniq])
 
     null = np.empty(n_permutations, dtype=float)
     for i in range(n_permutations):

@@ -161,7 +161,9 @@ def test_systematic_assessment_smoke():
     idx = [f"s{i}" for i in range(n)]
     grp = [f"u{i//2}" for i in range(n)]
     prot = pd.DataFrame(rng.rand(n, 20) + 1, index=idx, columns=[f"P{i}" for i in range(20)])
-    y = 3 * prot["P0"] + rng.rand(n) * 0.3
+    # 2 rows/unit (repeats) but the target is a UNIT-level property (constant within unit),
+    # as group-level permutation requires; the signal lives at the unit level.
+    y = (3 * prot["P0"] + rng.rand(n) * 0.3).groupby(pd.Series(grp, index=idx)).transform("mean")
     ds = OmicsDataset("t")
     ds.add_block("prot", prot, omics_type="proteomics")
     ds.set_sample_metadata(pd.DataFrame({"unit": grp, "y": y.values}, index=idx))
@@ -202,7 +204,7 @@ def test_systematic_assessment_repeatable():
     idx = [f"s{i}" for i in range(n)]
     grp = [f"u{i//2}" for i in range(n)]
     prot = pd.DataFrame(rng.rand(n, 30) + 1, index=idx, columns=[f"P{i}" for i in range(30)])
-    y = 3 * prot["P0"] + rng.rand(n) * 0.3
+    y = (3 * prot["P0"] + rng.rand(n) * 0.3).groupby(pd.Series(grp, index=idx)).transform("mean")
     ds = OmicsDataset("rep")
     ds.add_block("prot", prot, omics_type="proteomics")
     ds.set_sample_metadata(pd.DataFrame({"unit": grp, "y": y.values}, index=idx))
@@ -262,7 +264,7 @@ def test_figures_render_from_assessment_result():
     idx = [f"s{i}" for i in range(n)]
     grp = [f"u{i // 2}" for i in range(n)]
     prot = pd.DataFrame(rng.rand(n, 260) + 1, index=idx, columns=[f"P{i}" for i in range(260)])
-    y = 3 * prot["P0"] + rng.rand(n) * 0.3
+    y = (3 * prot["P0"] + rng.rand(n) * 0.3).groupby(pd.Series(grp, index=idx)).transform("mean")
     ds = OmicsDataset("fig")
     ds.add_block("prot", prot, omics_type="proteomics")
     ds.add_block("met", pd.DataFrame(rng.rand(n, 12) + 1, index=idx, columns=[f"M{i}" for i in range(12)]),
@@ -292,3 +294,51 @@ def test_figures_render_from_assessment_result():
     # graceful on empty inputs (no crash, returns None)
     assert figures.stability_bar([]) is None
     assert figures.naive_vs_reduced({}) is None
+
+
+# --- contract fixes (from external review) --------------------------------
+def test_transform_dispatch_log2p1_and_unknown_raises():
+    """log2p1 is a real alias for log2(x+1); an unknown transform RAISES (no silent no-op)."""
+    from ml_multiomics.preprocessing.pipeline import Preprocessor, Profile
+    X = pd.DataFrame({"a": [1.0, 3.0, 7.0]}, index=["s0", "s1", "s2"])
+    ds = OmicsDataset("t"); ds.add_block("p", X.copy(), omics_type="proteomics")
+    Preprocessor(profile=Profile(transform="log2p1", normalize="none", variance_min=None)).run(ds)
+    assert np.allclose(ds.get("p")["a"].to_numpy(), np.log2(X["a"].to_numpy() + 1))
+    ds2 = OmicsDataset("t2"); ds2.add_block("p", X.copy(), omics_type="proteomics")
+    with pytest.raises(ValueError, match="unknown transform"):
+        Preprocessor(profile=Profile(transform="bogus", normalize="none")).run(ds2)
+
+
+def test_preprocessor_run_is_idempotent():
+    """A second run() must NOT double-transform/double-z-score (the 'scaled once' contract)."""
+    from ml_multiomics.preprocessing.pipeline import Preprocessor
+    rng = np.random.RandomState(0)
+    X = pd.DataFrame(np.abs(rng.randn(6, 4)) + 1, index=[f"s{i}" for i in range(6)], columns=list("abcd"))
+    ds = OmicsDataset("t"); ds.add_block("p", X.copy(), omics_type="proteomics")
+    Preprocessor().run(ds); once = ds.get("p").copy()
+    Preprocessor().run(ds)                                    # no-op (already transformed/normalized)
+    pd.testing.assert_frame_equal(ds.get("p"), once)
+
+
+def test_spec_rejects_covariate_and_unknown_transform():
+    """covariate role is rejected until implemented; an unknown transform name is rejected up front."""
+    ds = _toy_ds()
+    with pytest.raises(ValueError, match="covariate"):
+        AnalysisSpec(grouping_column="unit", roles={"prot": "predictor", "met": "covariate"},
+                     target_type="continuous", target_column="y").validate(ds)
+    with pytest.raises(ValueError, match="transform"):
+        AnalysisSpec(grouping_column="unit", roles={"prot": "predictor", "met": "predictor"},
+                     target_type="continuous", target_column="y",
+                     transforms={"prot": "bogus"}).validate(ds)
+
+
+def test_permutation_requires_constant_label_per_group():
+    """Group-level permutation must reject a group carrying >1 distinct target value."""
+    from ml_multiomics.validation.resampling import permutation_resolution, grouped_permutation_test
+    g = np.array([0, 0, 1, 1]); y_bad = np.array([1.0, 2.0, 3.0, 3.0])   # group 0 inconsistent
+    with pytest.raises(ValueError, match="distinct"):
+        permutation_resolution(g, y_bad)
+    with pytest.raises(ValueError, match="distinct"):
+        grouped_permutation_test(lambda yy: 0.0, g, y_bad, n_permutations=3)
+    r = permutation_resolution(g, np.array([1.0, 1.0, 3.0, 3.0]))        # constant within group -> OK
+    assert r["n_groups"] == 2

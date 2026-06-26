@@ -74,9 +74,12 @@ def test_rf_regression_synthetic():
     n_groups, per = 10, 2
     n = n_groups * per
     X = rng.normal(size=(n, 8))
-    # signal in feature 0; group-structured noise
     groups = np.repeat(np.arange(n_groups), per)
-    y = 3.0 * X[:, 0] + rng.normal(scale=0.3, size=n)
+    # target is a GROUP-level property (constant within group) so the group-level permutation
+    # is well-posed; feature 0 carries a (per-sample noisy) signal that tracks it.
+    g_y = rng.normal(size=n_groups)
+    y = np.repeat(g_y, per)
+    X[:, 0] = y + rng.normal(scale=0.3, size=n)
     Xdf = pd.DataFrame(X, columns=[f"f{i}" for i in range(8)])
 
     rf = RandomForest(n_estimators=200).fit(Xdf, y, target_type="continuous")

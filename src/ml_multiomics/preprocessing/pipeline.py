@@ -38,8 +38,25 @@ from ..core.provenance import ProvenanceTrail
 
 logger = logging.getLogger(__name__)
 
-_TRANSFORMS = {"log2": log2_transform, "log10": log10_transform, "none": None, None: None}
+# "log2" already applies log2(x+1) (pseudocount=1); "log2p1" is an explicit alias for it.
+_TRANSFORMS = {"log2": log2_transform, "log2p1": log2_transform,
+               "log10": log10_transform, "none": None, None: None}
 _NORMALIZERS = {"zscore": zscore, "none": None, None: None}
+
+
+def _resolve_transform(name):
+    """Look up a transform fn, RAISING on an unknown name (never a silent no-op)."""
+    if name not in _TRANSFORMS:
+        raise ValueError(f"unknown transform {name!r}; known: "
+                         f"{sorted(k for k in _TRANSFORMS if isinstance(k, str))}")
+    return _TRANSFORMS[name]
+
+
+def _resolve_normalizer(name):
+    if name not in _NORMALIZERS:
+        raise ValueError(f"unknown normalize {name!r}; known: "
+                         f"{sorted(k for k in _NORMALIZERS if isinstance(k, str))}")
+    return _NORMALIZERS[name]
 
 
 @dataclass
@@ -82,20 +99,27 @@ class Preprocessor:
             return self.profile
         return self.profiles.get(omics_type, self.profiles["default"])
 
-    def run(self, dataset, blocks: Optional[list[str]] = None):
+    def run(self, dataset, blocks: Optional[list[str]] = None, force: bool = False):
         """Preprocess (in place) each block. Returns the dataset.
 
         Records every step in the block's provenance and sets the
         transformed/normalized flags. NaN is preserved; nothing is imputed.
+
+        IDEMPOTENT: a block already transformed/normalized is SKIPPED (so a second
+        ``run()`` can't silently double-transform / double-z-score, breaking the
+        'scaled once' contract). Pass ``force=True`` to re-run anyway.
         """
         names = blocks or dataset.block_names
         for name in names:
             block = dataset.blocks[name]
+            if (getattr(block, "transformed", False) or getattr(block, "normalized", False)) and not force:
+                block.log("preprocess skipped (already transformed/normalized; pass force=True to redo)")
+                continue
             prof = self._profile_for(block.omics_type)
             df = block.data
 
-            # 1. transform
-            tfn = _TRANSFORMS.get(prof.transform)
+            # 1. transform (unknown names raise rather than silently no-op)
+            tfn = _resolve_transform(prof.transform)
             if tfn is not None:
                 df = tfn(df)
                 block.transformed = True
@@ -110,7 +134,7 @@ class Preprocessor:
                 block.log(f"missingness_filter: <= {prof.max_missing_frac:.0%}")
 
             # 3. normalize
-            nfn = _NORMALIZERS.get(prof.normalize)
+            nfn = _resolve_normalizer(prof.normalize)
             if nfn is not None:
                 df = nfn(df)
                 block.normalized = True
@@ -184,7 +208,7 @@ class FittablePreprocessor:
     def _transform(self, df: pd.DataFrame) -> pd.DataFrame:
         if self._already_transformed:        # upstream already transformed -> don't double-apply
             return df
-        tfn = _TRANSFORMS.get(self.profile.transform)
+        tfn = _resolve_transform(self.profile.transform)   # unknown name raises, never silent no-op
         return tfn(df) if tfn is not None else df
 
     @staticmethod
