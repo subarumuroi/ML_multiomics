@@ -2,16 +2,15 @@
 wgcna_r.py
 ==========
 WGCNA via the reference implementation — the R `WGCNA` package — called through a
-subprocess bridge. This is the DEFAULT `WGCNA` (the native Python port is kept as
-`NativeWGCNA`, experimental/unvalidated).
+subprocess bridge. This is the ONLY `WGCNA` -- the experimental native Python port
+was removed (it did not reach parity with the R package), so WGCNA is R-only.
 
 As a reducer it exposes `.reduce()`/`.eigengenes()` → a samples × module-eigengene
 matrix (the real WGCNA dynamic-tree-cut modules + close-module merge), feeding the
 reduce→predict pattern. Requires R + the WGCNA package (community-standard, not
 the lab's gatekept code). handles_missing = False → impute first.
 
-Caveat unchanged: WGCNA expects n ≥ ~15–20; at small n modules are exploratory
-regardless of which implementation runs.
+Caveat unchanged: WGCNA expects n ≥ ~15–20; at small n modules are exploratory.
 """
 
 from __future__ import annotations

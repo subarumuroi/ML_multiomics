@@ -2,8 +2,8 @@
 diablo_r.py
 ===========
 DIABLO via the reference implementation — `mixOmics::block.splsda` (R) — called
-through a subprocess bridge. This is the DEFAULT `DIABLO` (the native Python port
-is kept as `NativeDIABLO`, experimental/unvalidated).
+through a subprocess bridge. This is the ONLY `DIABLO` -- the experimental native
+Python port was removed (it did not reach parity with mixOmics), so DIABLO is R-only.
 
 Why R: the multi-block design coupling is exactly where a reimplementation is
 hardest to validate, and mixOmics is the published standard with established
@@ -96,7 +96,7 @@ class DIABLO(BaseMethod):
             out.append("Ordinal target uses block.splsda (classification) -- order is discarded.")
         return out
 
-    # -- block prep (shared shape with NativeDIABLO) -----------------------
+    # -- block prep -------------------------------------------------------
     def _prepare_blocks(self, blocks):
         if hasattr(blocks, "block_names") and hasattr(blocks, "common_samples"):
             ds = blocks

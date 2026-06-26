@@ -28,7 +28,7 @@ if str(SRC) not in sys.path:
 
 from ml_multiomics.core import OmicsDataset, parse_delimited
 from ml_multiomics.preprocessing import Preprocessor
-from ml_multiomics.methods import RandomForest, SparsePLSDA, NativeDIABLO, NativeWGCNA, NMF, PCA, Lasso, ElasticNet, Ordinal
+from ml_multiomics.methods import RandomForest, SparsePLSDA, NMF, PCA, Lasso, ElasticNet, Ordinal
 from ml_multiomics.preprocessing import Profile
 
 BANANA = ROOT / "data"
@@ -133,70 +133,6 @@ def test_splsda_banana():
           "stability frequencies in [0,1]")
     n_selected = int((stab["selection_frequency"] > 0).sum())
     check(n_selected > 0, f"sparse selection picks features ({n_selected} ever-selected)")
-
-
-def test_diablo_banana():
-    print("\n=== NativeDIABLO multi-block (banana: 3 omics) — pure-Python ===")
-    print("   (the default DIABLO is R-backed mixOmics; tested via the banana report)")
-    files = {
-        "proteomics": ("badata-proteomics-imputed.csv", "proteomics"),
-        "metabolomics": ("badata-metabolomics.csv", "metabolomics"),
-        "amino_acids": ("badata-amino-acids.csv", "metabolomics"),
-    }
-    ds = OmicsDataset(name="banana")
-    for blk, (fn, otype) in files.items():
-        df = pd.read_csv(BANANA / fn).set_index("Sample")
-        df = df.drop(columns=[c for c in ("Groups",) if c in df.columns])
-        ds.add_block(blk, df, omics_type=otype)
-    ds.align()
-    ds.set_sample_metadata(parse_delimited(ds.common_samples(), sep="-", names=("stage", "replicate")))
-    Preprocessor().run(ds)
-
-    y = ds.sample_meta["stage"].to_numpy()
-    groups = np.arange(len(y))
-    keepX = {"proteomics": 20, "metabolomics": 10, "amino_acids": 10}
-
-    dia = NativeDIABLO(n_components=2, keepX=keepX, design=0.1).fit(ds, y, target_type="nominal")
-    corr = dia.block_correlations()
-    check(corr.shape == (3, 3), "block-correlation matrix is 3x3")
-    av = dia.all_vip()
-    check(set(av["block"].unique()) == set(files), "VIP returned for all 3 blocks")
-
-    cv = dia.cross_validate(ds, y, groups=groups)
-    check(0.0 <= cv["accuracy"] <= 1.0, f"grouped-CV accuracy in [0,1]: {cv['accuracy']:.3f}")
-
-
-def test_wgcna_reduce_then_predict():
-    print("\n=== NativeWGCNA reduction -> RandomForest (pure-Python) ===")
-    print("   (the default WGCNA is R-backed; tested via the banana report)")
-    df = pd.read_csv(BANANA / "badata-aromatics.csv").set_index("Sample")
-    df = df.drop(columns=[c for c in ("Groups",) if c in df.columns])
-    ds = OmicsDataset(name="banana")
-    ds.add_block("aromatics", df, omics_type="volatiles")
-    ds.set_sample_metadata(parse_delimited(df.index, sep="-", names=("stage", "replicate")))
-    Preprocessor().run(ds)
-
-    X = ds.get("aromatics")
-    y = ds.sample_meta["stage"].to_numpy()
-
-    wg = NativeWGCNA(corr_method="spearman").fit(X, y, target_type="ordinal")
-    mods = wg.modules()
-    check(len(mods) == X.shape[1], f"module assignment covers all {X.shape[1]} features")
-
-    reduced = wg.reduce(strategy="eigengenes_and_hubs")
-    check(reduced.shape[0] == X.shape[0], "reduced matrix keeps all samples")
-    check(reduced.shape[1] <= X.shape[1], "reduced matrix has <= original feature count")
-    print(f"  reduced: {X.shape[1]} features -> {reduced.shape[1]} columns "
-          f"({list(reduced.columns)[:4]}{'...' if reduced.shape[1] > 4 else ''})")
-
-    if reduced.shape[1] >= 2:
-        groups = np.arange(len(y))
-        rf = RandomForest(n_estimators=100).fit(reduced, y, target_type="nominal")
-        cv = rf.cross_validate(reduced, y, groups=groups, target_type="nominal")
-        check(0.0 <= cv["accuracy"] <= 1.0,
-              f"reduce->predict: RF on WGCNA factors, grouped-CV acc {cv['accuracy']:.3f}")
-    else:
-        print("  (too few modules at n=12 to chain into RF; reduction still produced)")
 
 
 def test_linear_models_synthetic():

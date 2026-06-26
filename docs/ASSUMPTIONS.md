@@ -282,10 +282,10 @@ conventions, cross-checked vs the actual R (`run_crosscheck_de.py`):
   WGCNA package) via a subprocess bridge — chosen because these reimplementations
   are hardest to validate and the user lacks the domain background to assess their
   parameters; the standard tools also bring validated tuning (`tune.block.splsda`).
-  A sPLS-DA probe vs mixOmics showed our native NIPALS matches the *variates*
+  A sPLS-DA probe vs mixOmics showed a native NIPALS port matched the *variates*
   (r=0.999) but the sparse feature *selection* only ~75-85% — good for components,
-  not for exact biomarker lists. The native Python ports are kept as
-  `NativeDIABLO` / `NativeWGCNA` (experimental, unvalidated). Depending on mixOmics/
+  not for exact biomarker lists. Because of that parity gap the native Python ports
+  of DIABLO/WGCNA were REMOVED; both are now R-only. Depending on mixOmics/
   WGCNA (community-standard, citable) does NOT reintroduce dependence on the lab's
   gatekept IdeaBio.R/.jl. Caveat: parity/correctness ≠ appropriateness — these
   methods may still be ill-suited to n≈24.

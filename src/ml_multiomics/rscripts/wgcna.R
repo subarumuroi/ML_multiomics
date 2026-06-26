@@ -3,7 +3,7 @@
 # Reads work dir with config.json + block.csv (samples x features, row names =
 # sample IDs); writes feature->module assignments and module eigengenes
 # (samples x modules) = the reduced representation. Uses the real dynamic tree
-# cut + close-module merge, which the native Python port only approximated.
+# cut + close-module merge (the reference implementation; WGCNA is R-only here).
 suppressMessages({
   library(WGCNA)
   library(jsonlite)

@@ -25,7 +25,7 @@ from ml_multiomics.preprocessing import FittablePreprocessor
 from ml_multiomics.methods.base import BaseMethod
 from ml_multiomics.methods import (
     RandomForest, XGBoost, SparsePLSDA, Ordinal, Lasso, ElasticNet,
-    DIABLO, NativeDIABLO, WGCNA, NativeWGCNA, NMF, PCA,
+    DIABLO, WGCNA, NMF, PCA,
 )
 from ml_multiomics.analysis import (
     detect_oversized_blocks, reduce_block, balance_blocks,
@@ -36,7 +36,7 @@ from ml_multiomics.validation import (
 )
 
 ALL_METHODS = [RandomForest, XGBoost, SparsePLSDA, Ordinal, Lasso, ElasticNet,
-               DIABLO, NativeDIABLO, WGCNA, NativeWGCNA, NMF, PCA]
+               DIABLO, WGCNA, NMF, PCA]
 
 
 # --- AnalysisSpec ---------------------------------------------------------
@@ -330,6 +330,26 @@ def test_spec_rejects_covariate_and_unknown_transform():
         AnalysisSpec(grouping_column="unit", roles={"prot": "predictor", "met": "predictor"},
                      target_type="continuous", target_column="y",
                      transforms={"prot": "bogus"}).validate(ds)
+
+
+def test_omics_pipeline_one_call():
+    """OmicsPipeline(ds, spec).run() returns setup + standard + bridge + systematic in one call."""
+    from ml_multiomics import OmicsPipeline
+    rng = np.random.RandomState(3)
+    n = 14
+    idx = [f"s{i}" for i in range(n)]
+    X = pd.DataFrame(rng.rand(n, 40) + 1, index=idx, columns=[f"P{i}" for i in range(40)])
+    y = pd.Series(3 * X["P0"].values, index=idx)        # one row/group, well-posed
+    ds = OmicsDataset("pipe")
+    ds.add_block("prot", X, omics_type="proteomics")
+    ds.set_sample_metadata(pd.DataFrame({"unit": idx, "y": y.values}, index=idx))
+    spec = AnalysisSpec(grouping_column="unit", roles={"prot": "predictor"},
+                        target_type="continuous", target_column="y")
+    out = OmicsPipeline(ds, spec, reducers=(), n_permutations=9, stability_bootstrap=4, seed=0).run()
+    assert set(out) >= {"spec", "setup", "systematic", "standard", "bridge"}
+    assert out["setup"]["n_groups"] == n
+    assert len(out["systematic"]["panel"]) > 0
+    assert {"n_agreed", "n_univariate", "n_ml"} <= set(out["bridge"])    # bridge populated
 
 
 def test_permutation_requires_constant_label_per_group():

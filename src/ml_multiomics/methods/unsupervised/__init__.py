@@ -8,9 +8,8 @@ supervised method (RandomForest, SparsePLSDA, ...) or added back to an
 OmicsDataset as a new block — the "reduce -> predict" pattern for p >> n data.
 """
 
-from .wgcna import NativeWGCNA       # experimental Python port (unvalidated)
-from .wgcna_r import WGCNA            # default: R WGCNA package
+from .wgcna_r import WGCNA            # WGCNA is the R WGCNA package only (validated)
 from .nmf import NMF
 from .pca import PCA
 
-__all__ = ["WGCNA", "NativeWGCNA", "NMF", "PCA"]
+__all__ = ["WGCNA", "NMF", "PCA"]

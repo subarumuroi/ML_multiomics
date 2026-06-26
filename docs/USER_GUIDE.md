@@ -303,10 +303,9 @@ ds.set_target("yield", type="continuous", values=yield_series)
 
 > Currently implemented: Random Forest, XGBoost, sparse PLS-DA, LASSO/ElasticNet,
 > Ordinal (`[ordinal]`) — supervised; PCA, NMF — reducers (sklearn). **DIABLO and
-> WGCNA use the reference R implementations** (mixOmics / WGCNA via the `[r]` path)
-> rather than unvalidated Python ports (native ports kept as `NativeDIABLO` /
-> `NativeWGCNA`, experimental). MOFA is being ported. The patterns below apply to
-> all of them.
+> WGCNA use the reference R implementations** (mixOmics / WGCNA via the `[r]` path);
+> they are R-only (the unvalidated native Python ports were removed for failing parity).
+> MOFA is being ported. The patterns below apply to all of them.
 
 ### Dimensionality reduction (the "reduce → predict" pattern)
 

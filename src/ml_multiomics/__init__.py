@@ -23,8 +23,9 @@ from .core import (
 )
 from .preprocessing import Preprocessor, Profile, DEFAULT_PROFILES
 from .methods.base import BaseMethod
-from .methods.supervised import RandomForest, SparsePLSDA, DIABLO, NativeDIABLO, Lasso, ElasticNet, Ordinal, XGBoost
-from .methods.unsupervised import WGCNA, NativeWGCNA, NMF, PCA
+from .methods.supervised import RandomForest, SparsePLSDA, DIABLO, Lasso, ElasticNet, Ordinal, XGBoost
+from .methods.unsupervised import WGCNA, NMF, PCA
+from .analysis import OmicsPipeline      # one-call entry point: OmicsPipeline(ds, spec).run()
 
 __all__ = [
     # subpackages
@@ -33,6 +34,7 @@ __all__ = [
     'OmicsDataset', 'Block', 'TargetSpec', 'AnalysisSpec',
     'parse_bioreactor_ids', 'parse_delimited',
     'Preprocessor', 'Profile', 'DEFAULT_PROFILES',
-    'BaseMethod', 'RandomForest', 'SparsePLSDA', 'DIABLO', 'NativeDIABLO',
-    'Lasso', 'ElasticNet', 'Ordinal', 'XGBoost', 'WGCNA', 'NativeWGCNA', 'NMF', 'PCA',
+    'BaseMethod', 'RandomForest', 'SparsePLSDA', 'DIABLO',
+    'Lasso', 'ElasticNet', 'Ordinal', 'XGBoost', 'WGCNA', 'NMF', 'PCA',
+    'OmicsPipeline',
 ]
