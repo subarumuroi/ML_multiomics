@@ -220,3 +220,10 @@ examples/**/_cache/
 
 # native-R figure PNGs (regenerated at cache build; inlined into the rendered HTML)
 examples/**/_figures/
+
+# rendered report deliverables (regenerate from the .qmd). The IDEA Bio template
+# assets under examples/_ideabio_template/ are NOT ignored -- they are source.
+examples/psilocybin_report/*.html
+examples/psilocybin_report/*.docx
+examples/banana_report/*.html
+examples/banana_report/*.docx

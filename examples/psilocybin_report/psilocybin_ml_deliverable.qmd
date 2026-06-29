@@ -1,0 +1,345 @@
+---
+title: "Machine-Learning Omics Analysis"
+subtitle: "Relating the molecular profile to the measured outcome"
+author: "IDEA Bio Learn Team"
+date: "2026-06-21"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-title: "Contents"
+    code-fold: true
+    embed-resources: true
+  docx:
+    reference-doc: ../_ideabio_template/idea-bio-reference-template-v1.docx
+    toc: true
+    toc-depth: 2
+    toc-title: "Contents"
+    number-sections: false
+csl: ../_ideabio_template/nature.csl
+bibliography: ../_ideabio_template/biblio.bib
+jupyter: python3
+execute:
+  warning: false
+  cache: false
+---
+
+```{python}
+#| echo: false
+#| output: false
+#| tags: [parameters]
+compound = "psilocybin_ext"      # must match a cached run (python analysis.py)
+n_permutations = 49
+stability_bootstrap = 10
+run_condition_c = False
+```
+
+```{python}
+#| echo: false
+#| output: false
+import sys
+from pathlib import Path
+HERE = Path.cwd()
+for cand in (HERE, HERE / "examples" / "psilocybin_report"):
+    if (cand / "analysis.py").exists():
+        sys.path.insert(0, str(cand)); break
+import analysis
+import pandas as pd
+import matplotlib.pyplot as plt
+from IPython.display import Markdown, display
+from ml_multiomics.analysis import figures
+
+# loads the cached result (instant); compute once with `python analysis.py` if absent
+res = analysis.get_results(compound, n_permutations=n_permutations,
+                           stability_bootstrap=stability_bootstrap, run_condition_c=run_condition_c)
+setup = res["setup"]; std = res["standard"]; pp = res["preprocess"]
+ysys = res["yield"]["systematic"]; yint = res["yield"].get("integration")
+ynf = res["yield"].get("native_figures", {}); bridge = res["yield"].get("bridge", {})
+assoc = std["assoc"]; cons = ysys["consensus"]
+
+def show(fig, fallback="_(figure not available for this run)_"):
+    if fig is None:
+        display(Markdown(fallback)); return
+    display(fig); plt.close(fig)
+
+def names(feats, k=6):
+    fs = [str(f).split("__", 1)[-1] for f in list(feats)[:k]]
+    return ", ".join(f"**{f}**" for f in fs) if fs else "none"
+
+def embed_native(nf, kind, intro):
+    paths = nf.get(kind) or []
+    if not paths:
+        note = nf.get(f"{kind}_note") or nf.get("note") or "not generated for this run"
+        return Markdown(f"{intro}\n\n_{note}_")
+    md = [intro]
+    for p in paths:
+        md.append(f"![{Path(p).stem.split('_',1)[-1]}]({p}){{width=85%}}")
+    return Markdown("\n\n".join(md))
+
+# plain-language model labels (no ML jargon in the client view)
+_PLAIN = {
+    "RandomForest": "Random forest (flexible pattern finder)",
+    "XGBoost": "Gradient boosting (flexible pattern finder)",
+    "Lasso": "Sparse linear model (picks a few features)",
+    "ElasticNet": "Regularised linear model",
+    "SparsePLSDA": "Sparse PLS (latent-component model)",
+    "Ordinal": "Ordered-category model",
+    "PCA->RandomForest": "Summarise-then-predict (principal components)",
+    "NMF->RandomForest": "Summarise-then-predict (parts-based factors)",
+}
+def plain_method(approach):
+    return _PLAIN.get(approach.split(" | ")[0].replace("(", "").replace(")", ""), approach)
+```
+
+```{python}
+#| echo: false
+#| output: false
+def panel_plain(systematic):
+    """Client-facing model table: no accuracy leaderboard, just the trust signals."""
+    rows = []
+    for r in systematic["panel"]:
+        if "error" in r:
+            continue
+        perm = r["permutation"]
+        sig = perm.get("significant")
+        rows.append({
+            "Approach": r["approach"],
+            "Features used": r["n_inputs"],
+            "Signal beyond chance?": ("yes" if sig else "no") if sig is not None else "n/a",
+            "Reliable (recurs)?": f"{r['n_stable']} stable feature(s)" if r.get("n_stable") is not None else "n/a",
+            "Over-fitting flag": "yes" if r["overfit"]["overfit"] else "no",
+        })
+    return pd.DataFrame(rows)
+
+def summary_md(res):
+    nsig = sum(1 for r in ysys["panel"] if "error" not in r and r["permutation"].get("significant"))
+    floor = setup["resolution"].get("finest_two_sided_p") if isinstance(setup["resolution"], dict) else None
+    top = names(cons["feature"]) if len(cons) else "none reached the reliability threshold"
+    lines = [
+        f"We related **{sum(res['block_sizes'].values())} molecular features** across "
+        f"**{len(res['block_sizes'])} omics layers** to **{compound} yield**, measured across "
+        f"**{res['n_bioreactors']} independent bioreactors**.",
+        "",
+        f"- **Most reliable candidates** (selected repeatedly, by several independent methods): {top}. "
+        "These are the recommended features to follow up experimentally.",
+    ]
+    if nsig:
+        lines.append(f"- **Evidence of real signal:** {nsig} approach(es) scored better than random "
+                     "chance (label-shuffle test), so the association is unlikely to be a fluke.")
+    else:
+        lines.append("- **Evidence of real signal:** no approach clearly beat random chance at this "
+                     "sample size — treat the candidates as exploratory leads, not confirmed drivers.")
+    if floor and floor == floor:
+        lines.append(f"- **Sample-size limit:** with {setup['n_groups']} bioreactors the strongest "
+                     f"statistical statement possible is about p≈{floor:.2g}; this analysis finds "
+                     "trustworthy *hypotheses*, not a deployable predictor.")
+    return "\n".join(lines)
+```
+
+# Summary
+
+```{python}
+#| echo: false
+Markdown(summary_md(res))
+```
+
+# 1. Overview
+
+```{python}
+#| echo: false
+Markdown(
+    "**What this analysis does.** It looks across all the molecular measurements taken from each "
+    "sample — proteins and intracellular metabolites — and asks *which of them track the outcome* "
+    f"(here, **{compound} yield**). It does this two ways: the **standard** way (one feature at a "
+    "time) and a **machine-learning** way (many features together, and across the different omics "
+    "layers at once). The goal is a short, trustworthy list of candidates to investigate — not a "
+    "black-box predictor.\n\n"
+    "**The data.** " + "; ".join(f"{b} ({n} features)" for b, n in res["block_sizes"].items()) +
+    f". Each of the {res['n_bioreactors']} bioreactors is treated as one independent sample, so no "
+    "single run can leak between the training and testing steps.\n\n"
+    "**How to read this report.** At this sample size a single accuracy number is unreliable, so we "
+    "do **not** rank models by accuracy. Instead each result is judged by two plain questions: "
+    "*is there signal beyond chance?* and *does the same answer recur when we resample the data?* "
+    "A candidate that passes both, across several methods, is a trustworthy hypothesis."
+)
+```
+
+# 2. Standard analysis (one feature at a time)
+
+This is the conventional omics analysis: quality control, preprocessing, and a per-feature screen — the same steps a standard report uses, applied here to the chosen outcome.
+
+## 2.1 Quality control
+
+```{python}
+#| echo: false
+std["qc"]
+```
+
+## 2.2 Preprocessing
+
+```{python}
+#| echo: false
+Markdown(
+    "Each measurement table is cleaned the same way before analysis: drop features seen in too few "
+    f"samples (kept if present in ≥{int(pp['min_obs_frac']*100)}% of bioreactors), put values on a log "
+    "scale, fill the few remaining gaps with a low (below-detection) estimate, and standardise each "
+    f"feature to a common scale. On the proteins this kept **{pp['n_kept']} of {pp['n_in']}** features. "
+    "For the machine-learning step every one of these choices is re-learned *inside* each resampling "
+    "round on the training samples only, so nothing about the held-out samples leaks in.")
+```
+
+## 2.3 Which single features track the outcome
+
+```{python}
+#| echo: false
+Markdown(
+    f"A per-feature correlation with {compound} yield (rank-based, robust at this sample size), with a "
+    "false-discovery correction. This is the familiar 'volcano'-style screen, adapted to a continuous "
+    "outcome. Strongest associations:")
+```
+
+```{python}
+#| echo: false
+assoc.head(12)[["block", "feature", "rho", "qvalue"]].assign(
+    feature=lambda d: d["feature"].str.split("__").str[-1]).round(4)
+```
+
+```{python}
+#| echo: false
+#| fig-cap: "Each point is one feature: its correlation with the outcome (left–right) versus the strength of evidence (up = stronger). Red points pass the false-discovery threshold."
+show(figures.association_volcano(assoc) if len(assoc) else None)
+```
+
+# 3. Machine-learning analysis (many features together)
+
+```{python}
+#| echo: false
+Markdown(
+    "The single-feature screen above misses combinations — features that only matter *together*, or "
+    "patterns that span more than one omics layer. The machine-learning step looks at the features "
+    "jointly and across layers. Because the sample size is small, we judge every model by the two "
+    "trust questions (signal beyond chance? reliably recurring?) rather than by an accuracy score.")
+```
+
+```{python}
+#| echo: false
+panel_plain(ysys)
+```
+
+```{python}
+#| echo: false
+#| fig-cap: "Is the best result real? The grey bars are scores when the outcome labels are randomly shuffled (i.e. pure chance); the red line is the real score. A real score far to the right of the grey pile is unlikely to be chance."
+_perm = [r for r in ysys["panel"] if "error" not in r and r.get("permutation", {}).get("null")]
+_best = min(_perm, key=lambda r: r["permutation"].get("p_value", 1.0)) if _perm else None
+show(figures.permutation_hist(_best) if _best else None)
+```
+
+## 3.1 The most reliable candidates
+
+```{python}
+#| echo: false
+Markdown(
+    "The candidates below were selected **repeatedly and by several independent methods** — the most "
+    "trustworthy output of the analysis. A long list from a single method is *not* reliable; agreement "
+    "across methods is.")
+display(cons.head(12))
+```
+
+```{python}
+#| echo: false
+#| fig-cap: "How many independent methods picked each feature as important. Features endorsed by several methods are the safest bets to follow up."
+show(figures.consensus_bar(cons))
+```
+
+## 3.2 Combining the omics layers
+
+```{python}
+#| echo: false
+Markdown(
+    "One omics layer (the proteins) is far larger than the others. If we feed it in raw, it dominates "
+    "and the 'important features' it returns are **not reproducible**. Summarising it into a few "
+    "coordinated profiles first fixes this. The bars show how reliably each approach's selected "
+    "features recur — higher is more trustworthy.")
+show(figures.naive_vs_reduced(yint) if yint else None, "_(integration step not in this run)_")
+```
+
+```{python}
+#| echo: false
+embed_native(ynf, "diablo",
+    "**Cross-omics signature.** These standard mixOmics views show how the layers line up: which "
+    "samples group together, and which features move together *across* layers (the coordinated "
+    "signature that tracks the outcome).")
+```
+
+```{python}
+#| echo: false
+embed_native(ynf, "wgcna",
+    "**Protein co-abundance modules.** Groups of proteins that rise and fall together, and how each "
+    "group relates to the outcome — a biologist-friendly summary of the large protein layer.")
+```
+
+# 4. Standard vs machine-learning — what agrees
+
+```{python}
+#| echo: false
+def bridge_text(b):
+    if not b or "n_agreed" not in b:
+        return "_(comparison not available for this run)_"
+    return (
+        f"- **Both agree on {b['n_agreed']} feature(s)** — found by the simple screen *and* the "
+        f"multi-feature models: {names(b['agreed'])}. These are the strongest, most defensible candidates.\n"
+        f"- **{b['n_univariate_only']} feature(s)** looked promising in the single-feature screen but "
+        "did **not** hold up once features were modelled together — a caution against over-reading the "
+        "simple screen.\n"
+        f"- **{b['n_ml_only']} feature(s)** were surfaced **only** by the multi-feature models — the "
+        "added value of the machine-learning step over the standard screen.")
+Markdown("The two analyses are run on the **same outcome**, so we can reconcile them:\n\n" + bridge_text(bridge))
+```
+
+# 5. Interpretation and recommended next steps
+
+```{python}
+#| echo: false
+Markdown(
+    "- **Follow up the agreed candidates first** (Section 4) — they have independent support from "
+    "both the standard screen and the machine-learning models.\n"
+    "- **Treat everything here as a hypothesis**, not a verdict: at this sample size the analysis is "
+    "built to surface *trustworthy leads* for targeted validation, not to forecast yield.\n"
+    "- **Do not deploy any model here as a predictor.** The value is the shortlist and the biology it "
+    "points to (the protein modules and cross-omics signature above).")
+```
+
+# Conclusions
+
+```{python}
+#| echo: false
+Markdown(summary_md(res))
+```
+
+# Report approval
+
+# Acknowledgement of research services
+
+The Recipient must acknowledge the contributions of the Integrated Design Environment for Advanced Biomanufacturing (IDEA Bio) in written publications and/or oral presentations relating to the services and deliverables.
+
+# Appendix — methods and reproducibility {.appendix}
+
+```{python}
+#| echo: false
+Markdown(
+    "**Declared analysis (what was run).**")
+display(Markdown("```\n" + res["yield"]["spec"] + "\n```"))
+display(Markdown(
+    "**Preprocessing record** (every step, with input/output sizes — reproducible without this report):"))
+display(Markdown(std["assoc_provenance"]))
+```
+
+```{python}
+#| echo: false
+Markdown(
+    "**Methods in plain terms.** Each model was scored under leave-one-bioreactor-out resampling. "
+    "Signal was tested by shuffling the outcome labels 49 times (a fluke would score as well as the "
+    "real data). Reliability was measured by re-selecting features on bootstrap resamples. "
+    "Conventions follow the ml_multiomics library, cross-checked to the IDEA Bio R and Julia standard "
+    "tools. A separate technical report (`psilocybin_omics_ml.html`) carries the full diagnostic detail.")
+```
